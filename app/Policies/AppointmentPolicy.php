@@ -34,4 +34,10 @@ class AppointmentPolicy
         return $appointment->user_id === $user->id
             || ($user->hasRole('admin') && $user->can('view_all_appointments'));
     }
+
+    public function update(User $user, Appointment $appointment): bool
+    {
+        return $appointment->user_id === $user->id
+            || ($user->hasRole('admin') && $user->can('view_all_appointments'));
+    }
 }

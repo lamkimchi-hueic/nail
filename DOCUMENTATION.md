@@ -9,7 +9,6 @@ Một hệ thống đặt lịch và quản lý salon tóc/móng chuyên nghiệ
 - ✅ Duyệt danh sách dịch vụ (tên, giá, thời gian, hình ảnh)
 - ✅ Đặt lịch hẹn (chọn dịch vụ, ngày giờ, nhập thông tin)
 - ✅ Tra cứu lịch hẹn (theo SĐT)
-- ✅ Hủy lịch hẹn (trước 24h)
 - ✅ Nhận thông báo xác nhận
 
 ### 🔧 Dành cho Admin (Chủ quán/Thợ)
@@ -110,7 +109,6 @@ POST   /api/appointments                    - Tạo lịch hẹn mới
 POST   /api/appointments/create-manual      - Tạo lịch hẹn thủ công (admin)
 PATCH  /api/appointments/{id}/confirm       - Xác nhận lịch hẹn (admin)
 PATCH  /api/appointments/{id}/reject        - Từ chối lịch hẹn (admin)
-PATCH  /api/appointments/{id}/cancel        - Hủy lịch hẹn
 PATCH  /api/appointments/{id}/reschedule    - Dời lịch hẹn (admin)
 PATCH  /api/appointments/{id}/status        - Cập nhật trạng thái (admin)
 ```

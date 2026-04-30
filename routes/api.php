@@ -8,6 +8,13 @@ use App\Http\Controllers\SalonSettingController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\OAuthController;
+use App\Http\Controllers\AdminUserController;
+
+// OAuth routes
+Route::get('/auth/google', [OAuthController::class, 'redirectToGoogle'])->name('google.redirect');
+Route::get('/auth/google/callback', [OAuthController::class, 'handleGoogleCallback'])->name('google.callback');
+Route::post('/auth/google/complete', [OAuthController::class, 'completeRegistration'])->name('google.complete');
 
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
@@ -20,22 +27,23 @@ Route::get('/salon-settings', [SalonSettingController::class, 'publicSettings'])
 Route::get('/staffs', [StaffController::class, 'index']);
 Route::get('/staffs/{id}', [StaffController::class, 'show']);
 
-// Customer booking routes (unauthenticated)
-Route::post('/appointments', [AppointmentController::class, 'store']);
+// Customer booking routes (view availability)
 Route::get('/appointments/schedule', [AppointmentController::class, 'publicSchedule']);
-Route::get('/appointments/phone/{phone}', [AppointmentController::class, 'getByPhone']);
-Route::put('/appointments/{id}', [AppointmentController::class, 'updateByPhone']);
-Route::delete('/appointments/{id}', [AppointmentController::class, 'deleteByPhone']);
-Route::patch('/appointments/{id}/cancel', [AppointmentController::class, 'cancel']);
 
 // Get available slots for a staff (public)
 Route::get('/staffs/{id}/available-slots', [StaffController::class, 'availableSlots']);
 
 // Authenticated routes
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth:sanctum'])->group(function () {
     // Auth
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
+
+    // Customer - Authenticated routes
+    Route::get('/my-appointments', [AppointmentController::class, 'myAppointments']);
+    Route::put('/my-appointments/{id}', [AppointmentController::class, 'updateMyAppointment']);
+    Route::delete('/my-appointments/{id}', [AppointmentController::class, 'deleteMyAppointment']);
+    Route::post('/appointments', [AppointmentController::class, 'store']);
 
     // Admin - Services management
     Route::middleware(['role:admin'])->group(function () {
@@ -73,8 +81,17 @@ Route::middleware(['auth'])->group(function () {
 
     // Admin - Salon settings management
     Route::middleware(['role:admin', 'permission:edit_settings'])->group(function () {
-        Route::get('/salon-settings', [SalonSettingController::class, 'index']);
+        Route::get('/admin/salon-settings', [SalonSettingController::class, 'index']);
         Route::put('/salon-settings', [SalonSettingController::class, 'update']);
+        Route::post('/salon-settings/upload-hero', [SalonSettingController::class, 'uploadHeroImage']);
+    });
+
+    // Admin - User management
+    Route::middleware(['role:admin'])->group(function () {
+        Route::get('/admin/users', [AdminUserController::class, 'index']);
+        Route::post('/admin/users', [AdminUserController::class, 'store']);
+        Route::put('/admin/users/{id}', [AdminUserController::class, 'update']);
+        Route::delete('/admin/users/{id}', [AdminUserController::class, 'destroy']);
     });
 
 });

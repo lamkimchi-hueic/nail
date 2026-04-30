@@ -34,23 +34,6 @@ const AppointmentLookup = () => {
     }
   };
 
-  const handleCancel = async (appointmentId) => {
-    if (window.confirm('Bạn chắc chắn muốn hủy lịch hẹn này không?')) {
-      try {
-        const response = await appointmentsAPI.cancel(appointmentId);
-        if (response.data.success) {
-          // Update the appointment in the list
-          setAppointments(appointments.map(apt =>
-            apt.id === appointmentId ? { ...apt, status: 'cancelled' } : apt
-          ));
-          alert('Lịch hẹn đã được hủy thành công');
-        }
-      } catch (err) {
-        alert(err.response?.data?.message || 'Lỗi khi hủy lịch hẹn');
-      }
-    }
-  };
-
   const getStatusBadge = (status) => {
     const statusMap = {
       'pending': { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Chờ xác nhận' },
@@ -66,14 +49,6 @@ const AppointmentLookup = () => {
         {current.label}
       </span>
     );
-  };
-
-  const canCancel = (appointment) => {
-    if (appointment.status === 'cancelled') return false;
-    const appointmentTime = new Date(appointment.appointment_date);
-    const now = new Date();
-    const hoursUntil = (appointmentTime - now) / (1000 * 60 * 60);
-    return hoursUntil >= 24;
   };
 
   return (
@@ -160,18 +135,6 @@ const AppointmentLookup = () => {
                   <div className="mt-4 pt-4 border-t border-gray-200">
                     <p className="text-sm font-semibold text-gray-700">Ghi Chú:</p>
                     <p className="text-gray-600">{appointment.notes}</p>
-                  </div>
-                )}
-
-                {/* Cancel Button */}
-                {canCancel(appointment) && (
-                  <div className="mt-4">
-                    <button
-                      onClick={() => handleCancel(appointment.id)}
-                      className="bg-red-100 text-red-700 hover:bg-red-200 font-semibold px-4 py-2 rounded-lg transition-colors"
-                    >
-                      ✕ Hủy Lịch Hẹn
-                    </button>
                   </div>
                 )}
 

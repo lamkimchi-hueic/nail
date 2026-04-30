@@ -239,16 +239,15 @@ class AppointmentController extends Controller
     {
         try {
             $validated = $request->validate([
-                'phone' => 'required|string|max:20',
-                'name' => 'required|string|max:255',
                 'appointment_date' => 'required|date|after:now',
                 'staff_id' => 'required|exists:staffs,id',
                 'services' => 'required|array|min:1',
                 'services.*' => 'exists:services,id',
-                'notes' => 'nullable|string'
+                'notes' => 'nullable|string',
+                'phone' => 'nullable|string|max:20'
             ]);
 
-            $appointmentDateTime = Carbon::parse($validated['appointment_date']);
+            $appointmentDateTime = Carbon::parse($validated['appointment_date'], config('app.timezone'));
 
             if (!$this->isWithinWorkingHours($appointmentDateTime)) {
                 return response()->json([
@@ -265,22 +264,15 @@ class AppointmentController extends Controller
             }
 
             $appointment = DB::transaction(function () use ($validated, $appointmentDateTime) {
-                $normalizedPhone = $this->normalizePhone($validated['phone']);
+                $user = Auth::user();
 
-                // Find or create user by phone
-                $user = User::firstOrCreate(
-                    ['phone' => $normalizedPhone],
-                    [
-                        'name' => $validated['name'],
-                        'username' => $this->makeGuestUsername($normalizedPhone),
-                        'password' => Hash::make(Str::random(16)),
-                        'role' => 'customer',
-                    ]
-                );
+                if (!$user) {
+                    throw new \Exception('Unauthorized');
+                }
 
-                // If the user exists but didn't have a name, update it
-                if (empty($user->name)) {
-                    $user->name = $validated['name'];
+                // Update phone if provided and missing
+                if (empty($user->phone) && !empty($validated['phone'])) {
+                    $user->phone = $this->normalizePhone($validated['phone']);
                     $user->save();
                 }
 
@@ -339,9 +331,9 @@ class AppointmentController extends Controller
             $this->authorize('create', Appointment::class);
 
             $validated = $request->validate([
-                'user_id' => 'required_unless:phone,null|exists:users,id',
-                'phone' => 'required_unless:user_id,null|string|max:20',
-                'name' => 'required_if:phone,*|string|max:255',
+                'user_id' => 'nullable|exists:users,id',
+                'phone' => 'required_without:user_id|string|max:20',
+                'name' => 'required_without:user_id|string|max:255',
                 'appointment_date' => 'required|date|after:now',
                 'staff_id' => 'required|exists:staffs,id',
                 'services' => 'required|array|min:1',
@@ -597,6 +589,11 @@ class AppointmentController extends Controller
                 'services' => 'nullable|array|min:1',
                 'services.*' => 'exists:services,id',
                 'notes' => 'nullable|string'
+            ], [
+                'appointment_date.after' => 'Ngày hẹn phải là một thời điểm trong tương lai.',
+                'services.required' => 'Vui lòng chọn ít nhất 1 dịch vụ.',
+                'services.min' => 'Vui lòng chọn ít nhất 1 dịch vụ.',
+                'phone.required' => 'Thiếu số điện thoại để xác thực.'
             ]);
 
             $appointment = Appointment::with(['user', 'services'])->findOrFail($id);
@@ -752,6 +749,141 @@ class AppointmentController extends Controller
         }
     }
 
+    // Update my appointment (Authenticated customer)
+    public function updateMyAppointment(Request $request, $id)
+    {
+        try {
+            $appointment = Appointment::findOrFail($id);
+            $this->authorize('update', $appointment);
+
+            $validated = $request->validate([
+                'appointment_date' => 'nullable|date|after:now',
+                'staff_id' => 'nullable|exists:staffs,id',
+                'services' => 'nullable|array|min:1',
+                'services.*' => 'exists:services,id',
+                'notes' => 'nullable|string'
+            ], [
+                'appointment_date.after' => 'Ngày hẹn phải là một thời điểm trong tương lai.',
+                'services.required' => 'Vui lòng chọn ít nhất 1 dịch vụ.',
+                'services.min' => 'Vui lòng chọn ít nhất 1 dịch vụ.'
+            ]);
+
+            if (in_array($appointment->status, ['cancelled', 'completed'], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không thể chỉnh sửa lịch đã hoàn thành hoặc đã hủy'
+                ], 400);
+            }
+
+            $targetStaffId = (int) ($validated['staff_id'] ?? $appointment->staff_id);
+            
+            // Explicitly parse with the app timezone to be safe
+            $targetDateTime = isset($validated['appointment_date'])
+                ? Carbon::parse($validated['appointment_date'], config('app.timezone'))
+                : Carbon::parse($appointment->appointment_date, config('app.timezone'));
+
+            \Illuminate\Support\Facades\Log::info('Updating appointment (Authenticated)', [
+                'id' => $id,
+                'input_date' => $validated['appointment_date'] ?? 'not provided',
+                'parsed_date' => $targetDateTime->format('Y-m-d H:i:s'),
+                'timezone' => config('app.timezone')
+            ]);
+
+            if (!$this->isWithinWorkingHours($targetDateTime)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Khung giờ này ngoài giờ làm việc, hãy xem lại giờ làm việc.'
+                ], 422);
+            }
+
+            if ($this->isTimeSlotBooked($targetStaffId, $targetDateTime, (int) $appointment->id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Khung giờ này đã có lịch, vui lòng chọn giờ khác.'
+                ], 409);
+            }
+
+            DB::transaction(function () use ($validated, $appointment, $targetStaffId, $targetDateTime) {
+                $updateData = [
+                    'staff_id' => $targetStaffId,
+                    'appointment_date' => $targetDateTime,
+                    'status' => 'pending',
+                ];
+
+                if (array_key_exists('notes', $validated)) {
+                    $updateData['notes'] = $validated['notes'];
+                }
+
+                if (isset($validated['services'])) {
+                    $services = Service::whereIn('id', $validated['services'])->get();
+                    $updateData['total_price'] = $services->sum('price');
+
+                    AppointmentDetail::where('appointment_id', $appointment->id)->delete();
+                    foreach ($validated['services'] as $serviceId) {
+                        AppointmentDetail::create([
+                            'appointment_id' => $appointment->id,
+                            'service_id' => $serviceId
+                        ]);
+                    }
+                }
+
+                $appointment->update($updateData);
+            });
+
+            $appointment->load(['user', 'staff', 'services']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Cập nhật lịch hẹn thành công',
+                'data' => $appointment
+            ]);
+        } catch (AuthorizationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn không có quyền cập nhật lịch hẹn này'
+            ], 403);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Dữ liệu không hợp lệ',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi khi cập nhật lịch hẹn',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // Delete my appointment (Authenticated customer)
+    public function deleteMyAppointment($id)
+    {
+        try {
+            $appointment = Appointment::findOrFail($id);
+            $this->authorize('update', $appointment); // Using update policy for deletion as well
+
+            $appointment->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Xóa lịch hẹn thành công'
+            ]);
+        } catch (AuthorizationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn không có quyền xóa lịch hẹn này'
+            ], 403);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi khi xóa lịch hẹn',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     // Confirm appointment (Admin)
     public function confirm($id)
     {
@@ -803,102 +935,6 @@ class AppointmentController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Lỗi khi từ chối lịch hẹn',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    // Cancel appointment (Customer)
-    public function cancel(Request $request, $id)
-    {
-        try {
-            $appointment = Appointment::findOrFail($id);
-            $user = Auth::user();
-
-            if ($user && $user->role === 'admin') {
-                $appointment->update(['status' => 'cancelled']);
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Lịch hẹn được hủy thành công',
-                    'data' => $appointment
-                ]);
-            }
-
-            $validated = $request->validate([
-                'phone' => 'required|string|max:20',
-            ]);
-
-            if (!$this->canGuestAccessAppointment($appointment, $validated['phone'])) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Bạn không có quyền hủy lịch hẹn này'
-                ], 403);
-            }
-
-            // Guests/customers need 24-hour notice
-            $now = Carbon::now();
-            if ($appointment->appointment_date->diffInHours($now) < 24) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Chỉ có thể hủy lịch trước 24 giờ'
-                ], 400);
-            }
-
-            $appointment->update(['status' => 'cancelled']);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Lịch hẹn được hủy thành công',
-                'data' => $appointment
-            ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Dữ liệu không hợp lệ',
-                'errors' => $e->errors()
-            ], 422);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Lỗi khi hủy lịch hẹn',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    // Cancel my appointment (Authenticated customer)
-    public function cancelMyAppointment($id)
-    {
-        try {
-            $appointment = Appointment::findOrFail($id);
-            $this->authorize('cancel', $appointment);
-
-            // Check if can cancel (before 24 hours)
-            $now = Carbon::now();
-            if ($appointment->appointment_date->diffInHours($now) < 24) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Chỉ có thể hủy lịch trước 24 giờ'
-                ], 400);
-            }
-
-            $appointment->update(['status' => 'cancelled']);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Lịch hẹn được hủy thành công',
-                'data' => $appointment
-            ]);
-        } catch (AuthorizationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền hủy lịch hẹn này'
-            ], 403);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Lỗi khi hủy lịch hẹn',
                 'error' => $e->getMessage()
             ], 500);
         }

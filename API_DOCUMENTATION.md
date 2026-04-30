@@ -105,6 +105,44 @@ Authorization: Bearer {token}
 }
 ```
 
+### 🔐 Google OAuth - Redirect
+**GET** `/auth/google`
+
+Chuyển hướng user đến Google OAuth login page.
+
+**Usage:**
+```html
+<a href="http://localhost:8000/api/auth/google">
+  Đăng nhập với Google
+</a>
+```
+
+**Flow:**
+1. User clicks link
+2. Redirected to Google login
+3. User authenticates with Google
+4. Google redirects to `/auth/google/callback`
+5. System creates/finds user and redirects to frontend with token
+
+### 🔐 Google OAuth - Callback
+**GET** `/auth/google/callback`
+
+Google OAuth callback handler. Xử lý được tự động khi user hoàn thành Google authentication.
+
+**Redirect Parameters:**
+- `token`: Sanctum authentication token
+- `error`: Error message nếu có lỗi (e.g., OAuth failed)
+
+**Example redirect:**
+```
+http://localhost:5173?token=eyJ0eXAiOiJKV1QiLCJhbGc...
+```
+
+**User Creation:**
+- Nếu user mới: Tạo với role `customer`, auto-generated username
+- Nếu user tồn tại: Link OAuth account, cập nhật profile
+- Tất cả OAuth users đều là `customer` role
+
 ---
 
 ## 💅 Services Endpoints
@@ -336,20 +374,6 @@ Authorization: Bearer {token}
 ### ❌ Reject Appointment (Admin)
 **PATCH** `/appointments/{id}/reject` (Protected)
 
-### 🚫 Cancel Appointment
-**PATCH** `/appointments/{id}/cancel`
-
-*Khách hàng chỉ có thể hủy trước 24 giờ*
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Lịch hẹn được hủy thành công",
-  "data": { ... }
-}
-```
-
 ### 🗓️ Reschedule Appointment (Admin)
 **PATCH** `/appointments/{id}/reschedule` (Protected)
 
@@ -374,9 +398,6 @@ Authorization: Bearer {token}
 
 ### 📱 Get My Appointments (Authenticated)
 **GET** `/my-appointments` (Protected)
-
-### 🚫 Cancel My Appointment (Authenticated)
-**PATCH** `/my-appointments/{id}/cancel` (Protected)
 
 ---
 
@@ -480,7 +501,7 @@ Tìm kiếm theo: tên, SĐT, email
     "slot_duration": 60,
     "max_concurrent_staff": 5,
     "booking_advance_days": 30,
-    "cancel_before_hours": 24
+    "cancel_before_hours": 0
   }
 }
 ```
@@ -571,7 +592,7 @@ Tìm kiếm theo: tên, SĐT, email
 | Token not found | Không gửi token | Thêm Authorization header |
 | Invalid credentials | Email/password sai | Kiểm tra lại credentials |
 | Validation failed | Dữ liệu không đúng | Kiểm tra request schema |
-| Cannot cancel appointment | Lịch trong 24h | Chỉ hủy trước 24h |
+| Cannot cancel appointment | Không có quyền hủy lịch | Kiểm tra số điện thoại/tài khoản đúng lịch hẹn |
 | Appointment not found | ID không tồn tại | Kiểm tra appointment ID |
 
 ---

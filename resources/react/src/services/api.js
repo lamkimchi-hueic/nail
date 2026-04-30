@@ -39,8 +39,6 @@ export const appointmentsAPI = {
   createManual: (data) => api.post('/appointments/create-manual', data),
   confirm: (id) => api.patch(`/appointments/${id}/confirm`),
   reject: (id) => api.patch(`/appointments/${id}/reject`),
-  cancel: (id) => api.patch(`/appointments/${id}/cancel`),
-  cancelMine: (id) => api.patch(`/my-appointments/${id}/cancel`),
   reschedule: (id, date) => api.patch(`/appointments/${id}/reschedule`, { appointment_date: date }),
   updateStatus: (id, status) => api.patch(`/appointments/${id}/status`, { status })
 };

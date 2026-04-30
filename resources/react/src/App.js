@@ -171,14 +171,14 @@ const Navigation = ({ user, onLogout, onNavigate, currentPage }) => {
 // Main App Component
 function App() {
   const { user, isAuthenticated, logout } = useContext(AuthContext);
-  const [currentPage, setCurrentPage] = useState('home');
+  const [currentPage, setCurrentPage] = useState('booking');
 
   if (!isAuthenticated) {
     return <Login onLogin={() => {
       if (user?.role === 'admin') {
         setCurrentPage('dashboard');
       } else {
-        setCurrentPage('home');
+        setCurrentPage('booking');
       }
     }} />;
   }
@@ -187,7 +187,7 @@ function App() {
 
   const handleLogout = () => {
     logout();
-    setCurrentPage('home');
+    setCurrentPage('booking');
   };
 
   const renderPage = () => {

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import '../css/app.css';
 
@@ -56,6 +56,30 @@ function formatWorkingHoursSummary(hours) {
     .join(' | ');
 }
 
+function formatDisplayDate(dateStr) {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function calculateCalendarDays(calendarMonth) {
+  const month = calendarMonth.getMonth();
+  const year = calendarMonth.getFullYear();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const daysInMonth = lastDay.getDate();
+  const startingDayOfWeek = firstDay.getDay();
+  
+  const days = [];
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    days.push(null);
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    days.push(new Date(year, month, d));
+  }
+  return days;
+}
+
 function getLocalDateTimeParts(dateTimeValue) {
   if (!dateTimeValue) {
     return { date: '', time: '09:00' };
@@ -97,15 +121,22 @@ function resolveServiceImage(service) {
   return `${API_BASE_URL}/storage/${image}`;
 }
 
+function resolveHeroImage(url) {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  if (url.startsWith('/')) return `${API_BASE_URL}${url}`;
+  return `${API_BASE_URL}/${url}`;
+}
+
 function App() {
-  const AUTH_STORAGE_KEY = 'adminAuth';
+  const AUTH_STORAGE_KEY = 'userAuth';
 
   const [auth, setAuthState] = useState(() => {
     try {
       const raw = localStorage.getItem(AUTH_STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      if (parsed?.user?.role === 'admin') return parsed;
+      if (parsed?.user?.role) return parsed;
       return null;
     } catch {
       return null;
@@ -136,12 +167,11 @@ function App() {
   const setAuth = (nextAuth) => {
     setAuthState(nextAuth);
 
-    if (nextAuth?.user?.role === 'admin') {
+    if (nextAuth?.user) {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextAuth));
-      return;
+    } else {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
     }
-
-    localStorage.removeItem(AUTH_STORAGE_KEY);
   };
 
   // Save adminPage to cookie whenever it changes
@@ -153,10 +183,12 @@ function App() {
   useEffect(() => {
     const fetchUser = async () => {
       try {
+        const authToken = localStorage.getItem('auth_token');
         const res = await fetch(`${API_BASE_URL}/api/user`, {
           credentials: 'include',
           headers: {
-            Accept: 'application/json'
+            Accept: 'application/json',
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
           }
         });
 
@@ -166,20 +198,36 @@ function App() {
         }
 
         const data = await res.json();
-        const role = data?.data?.role;
-        if (role !== 'admin') {
-          setAuth(null);
-          setLoading(false);
-          return;
+        const userData = data?.data;
+        if (userData?.role) {
+          setAuth({ user: userData });
         }
-
-        setAuth({ user: data.data });
       } catch (error) {
         console.error(error);
       } finally {
         setLoading(false);
       }
     };
+
+    // Check for OAuth callback
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const error = params.get('error');
+
+    if (error) {
+      console.error('OAuth error:', error);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setLoading(false);
+      return;
+    }
+
+    if (token) {
+      localStorage.setItem('auth_token', token);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      // Fetch user after OAuth
+      fetchUser();
+      return;
+    }
 
     fetchUser();
   }, []);
@@ -213,7 +261,26 @@ function App() {
     );
   }
 
-  if (auth.user?.role === 'admin') {
+  const handleLogout = async () => {
+    try {
+      const authToken = localStorage.getItem('auth_token');
+      if (authToken) {
+        await fetch(`${API_BASE_URL}/api/logout`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 
+            Accept: 'application/json',
+            Authorization: `Bearer ${authToken}`
+          }
+        });
+      }
+    } finally {
+      localStorage.removeItem('auth_token');
+      setAuth(null);
+    }
+  };
+
+  if (auth?.user?.role === 'admin') {
     return (
       <AdminPanel
         auth={auth}
@@ -224,14 +291,14 @@ function App() {
     );
   }
 
-  return <PublicHome onLoginClick={() => setShowAuthForm(true)} onRegisterClick={() => setShowAuthForm(true)} />;
+  return <PublicHome auth={auth} onLogoutClick={handleLogout} onLoginClick={() => setShowAuthForm(true)} onRegisterClick={() => { setAuthMode('register'); setShowAuthForm(true); }} />;
 }
 
-function PublicHome({ onLoginClick, onRegisterClick }) {
+function PublicHome({ auth, setAuth, onLoginClick, onRegisterClick, onLogoutClick }) {
   const [services, setServices] = useState([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [salonSettings, setSalonSettings] = useState({
-    salon_phone: '0900 123 456',
+    salon_phone: '',
     working_hours: getDefaultWorkingHours()
   });
   const [booking, setBooking] = useState({
@@ -243,10 +310,19 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
   });
   const [bookingStatus, setBookingStatus] = useState({ type: '', message: '' });
   const [lookupStatus, setLookupStatus] = useState({ type: '', message: '' });
+  const [showTimeGrid, setShowTimeGrid] = useState(false);
+  const [showLookupSection, setShowLookupSection] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [bookedSlots, setBookedSlots] = useState([]);
   const [dailySchedule, setDailySchedule] = useState([]);
-  const [lookupPhone, setLookupPhone] = useState('');
+  const [lookupPhone, setLookupPhone] = useState(auth?.user?.phone || '');
+  
+  useEffect(() => {
+    if (auth?.user?.phone) {
+      setLookupPhone(auth.user.phone);
+    }
+  }, [auth?.user?.phone]);
+
   const [customerAppointments, setCustomerAppointments] = useState([]);
   const [loadingCustomerAppointments, setLoadingCustomerAppointments] = useState(false);
   const [editingAppointmentId, setEditingAppointmentId] = useState(null);
@@ -261,6 +337,12 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
   const servicePickerRef = useRef(null);
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  
+  useEffect(() => {
+    if (auth) {
+      fetchCustomerAppointments();
+    }
+  }, [auth]);
 
   useEffect(() => {
     const loadServices = async () => {
@@ -289,16 +371,21 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
           headers: { Accept: 'application/json' }
         });
 
-        if (!res.ok) return;
+        if (!res.ok) {
+          console.error('❌ Salon settings API error:', res.status, res.statusText);
+          return;
+        }
 
         const data = await res.json();
+        console.log('✅ Salon settings loaded:', data);
         const settings = data?.data || {};
         setSalonSettings({
-          salon_phone: settings.salon_phone || '0900 123 456',
-          working_hours: normalizeWorkingHours(settings.working_hours)
+          salon_phone: settings.salon_phone || '',
+          working_hours: normalizeWorkingHours(settings.working_hours),
+          hero_image: settings.hero_image || null
         });
       } catch (error) {
-        console.error(error);
+        console.error('❌ Salon settings fetch error:', error);
       }
     };
 
@@ -345,29 +432,7 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
       .map((service) => service.name);
   }, [services, booking.service_ids]);
 
-  const getCalendarDays = useMemo(() => {
-    const month = calendarMonth.getMonth();
-    const year = calendarMonth.getFullYear();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startingDayOfWeek = firstDay.getDay();
-    
-    const days = [];
-    for (let i = 0; i < startingDayOfWeek; i++) {
-      days.push(null);
-    }
-    for (let d = 1; d <= daysInMonth; d++) {
-      days.push(new Date(year, month, d));
-    }
-    return days;
-  }, [calendarMonth]);
-
-  const formatDisplayDate = (dateStr) => {
-    if (!dateStr) return '';
-    const [y, m, d] = dateStr.split('-');
-    return `${d}/${m}/${y}`;
-  };
+  const getCalendarDays = useMemo(() => calculateCalendarDays(calendarMonth), [calendarMonth]);
 
   const handleDateSelect = (date) => {
     const year = date.getFullYear();
@@ -478,12 +543,9 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
       bookedSlots: bookedSlots
     });
 
-    // Validate all required fields
-    if (!booking.name || !booking.phone || booking.service_ids.length === 0 || !booking.appointment_date || !booking.appointment_time) {
+    if (booking.service_ids.length === 0 || !booking.appointment_date || !booking.appointment_time) {
       setSubmitting(false);
       const missing = [];
-      if (!booking.name) missing.push('Tên');
-      if (!booking.phone) missing.push('Số điện thoại');
       if (booking.service_ids.length === 0) missing.push('Dịch vụ');
       if (!booking.appointment_date) missing.push('Ngày');
       if (!booking.appointment_time) missing.push('Giờ');
@@ -502,20 +564,22 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
 
     try {
       const payload = {
-        name: booking.name,
-        phone: booking.phone,
         appointment_date: `${booking.appointment_date} ${booking.appointment_time}:00`,
         staff_id: 1,
-        services: booking.service_ids.map((id) => Number(id))
+        services: booking.service_ids.map((id) => Number(id)),
+        ...(booking.phone ? { phone: booking.phone } : {})
       };
 
       console.log('Booking payload:', payload);
+
+      const authToken = localStorage.getItem('auth_token');
 
       const res = await fetch(`${API_BASE_URL}/api/appointments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Accept: 'application/json'
+          Accept: 'application/json',
+          Authorization: `Bearer ${authToken}`
         },
         body: JSON.stringify(payload)
       });
@@ -528,7 +592,7 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
           type: 'success',
           message: data?.message || 'Đặt lịch thành công. Salon sẽ liên hệ bạn sớm.'
         });
-        setBooking((prev) => ({ ...prev, name: '', phone: '', service_ids: [] }));
+        setBooking((prev) => ({ ...prev, service_ids: [] }));
 
         if (lookupPhone && lookupPhone === booking.phone) {
           fetchCustomerAppointments(lookupPhone);
@@ -576,7 +640,7 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
   };
 
   const fetchCustomerAppointments = async (phoneParam = lookupPhone) => {
-    if (!phoneParam) {
+    if (!auth?.user && !phoneParam) {
       setLookupStatus({ type: 'error', message: 'Vui lòng nhập số điện thoại để tra cứu.' });
       return;
     }
@@ -585,9 +649,20 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
     setLookupStatus({ type: '', message: '' });
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/appointments/phone/${encodeURIComponent(phoneParam)}`, {
-        headers: { Accept: 'application/json' }
-      });
+      const authToken = localStorage.getItem('auth_token');
+      let res;
+      
+      if (auth?.user && authToken) {
+        res = await fetch(`${API_BASE_URL}/api/my-appointments`, {
+          headers: { 
+            Accept: 'application/json',
+            Authorization: `Bearer ${authToken}`
+          }
+        });
+      } else {
+        setLoadingCustomerAppointments(false);
+        return;
+      }
 
       const data = await res.json();
       if (!res.ok) {
@@ -600,7 +675,7 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
       setCustomerAppointments(list);
       setLookupStatus({
         type: 'success',
-        message: list.length > 0 ? `Tìm thấy ${list.length} lịch hẹn.` : 'Không có lịch hẹn nào với số điện thoại này.'
+        message: list.length > 0 ? `Tìm thấy ${list.length} lịch hẹn.` : 'Không có lịch hẹn nào.'
       });
     } catch (error) {
       console.error(error);
@@ -623,8 +698,9 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
 
   const submitEditAppointment = async (appointmentId) => {
     const normalizedPhone = lookupPhone.trim();
+    const authToken = localStorage.getItem('auth_token');
 
-    if (!normalizedPhone) {
+    if (!auth?.user && !normalizedPhone) {
       setLookupStatus({ type: 'error', message: 'Vui lòng nhập số điện thoại để cập nhật lịch.' });
       return;
     }
@@ -636,17 +712,25 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
 
     try {
       const payload = {
-        phone: normalizedPhone,
         appointment_date: `${editForm.appointment_date} ${editForm.appointment_time}:00`,
         services: editForm.service_ids,
         notes: editForm.notes
       };
+      
+      if (!auth?.user) {
+        payload.phone = normalizedPhone;
+      }
 
-      const res = await fetch(`${API_BASE_URL}/api/appointments/${appointmentId}`, {
+      const url = auth?.user && authToken
+        ? `${API_BASE_URL}/api/my-appointments/${appointmentId}`
+        : `${API_BASE_URL}/api/appointments/${appointmentId}`;
+
+      const res = await fetch(url, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Accept: 'application/json'
+          Accept: 'application/json',
+          ...(auth?.user && authToken ? { Authorization: `Bearer ${authToken}` } : {})
         },
         body: JSON.stringify(payload)
       });
@@ -666,7 +750,8 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
         return;
       }
 
-      setLookupStatus({ type: 'success', message: data?.message || 'Đã cập nhật lịch hẹn.' });
+      setLookupStatus({ type: 'success', message: data?.message || 'Đã cập nhật lịch hẹn thành công.' });
+      alert('Cập nhật lịch hẹn thành công!');
       setEditingAppointmentId(null);
       fetchCustomerAppointments(lookupPhone);
     } catch (error) {
@@ -675,44 +760,11 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
     }
   };
 
-  const cancelAppointmentByCustomer = async (appointmentId) => {
-    const normalizedPhone = lookupPhone.trim();
-
-    if (!normalizedPhone) {
-      setLookupStatus({ type: 'error', message: 'Vui lòng nhập số điện thoại để hủy lịch.' });
-      return;
-    }
-
-    if (!window.confirm('Bạn có chắc chắn muốn hủy lịch hẹn này?')) return;
-
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/appointments/${appointmentId}/cancel`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json'
-        },
-        body: JSON.stringify({ phone: normalizedPhone })
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setLookupStatus({ type: 'error', message: data?.message || 'Không thể hủy lịch hẹn.' });
-        return;
-      }
-
-      setLookupStatus({ type: 'success', message: data?.message || 'Đã hủy lịch hẹn.' });
-      fetchCustomerAppointments(lookupPhone);
-    } catch (error) {
-      console.error(error);
-      setLookupStatus({ type: 'error', message: 'Lỗi kết nối khi hủy lịch hẹn.' });
-    }
-  };
-
   const deleteAppointmentByCustomer = async (appointmentId) => {
     const normalizedPhone = lookupPhone.trim();
+    const authToken = localStorage.getItem('auth_token');
 
-    if (!normalizedPhone) {
+    if (!auth?.user && !normalizedPhone) {
       setLookupStatus({ type: 'error', message: 'Vui lòng nhập số điện thoại để xóa lịch.' });
       return;
     }
@@ -720,13 +772,18 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
     if (!window.confirm('Xóa lịch hẹn này khỏi hệ thống?')) return;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/appointments/${appointmentId}`, {
+      const url = auth?.user && authToken
+        ? `${API_BASE_URL}/api/my-appointments/${appointmentId}`
+        : `${API_BASE_URL}/api/appointments/${appointmentId}`;
+
+      const res = await fetch(url, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          Accept: 'application/json'
+          Accept: 'application/json',
+          ...(auth?.user && authToken ? { Authorization: `Bearer ${authToken}` } : {})
         },
-        body: JSON.stringify({ phone: normalizedPhone })
+        body: !auth?.user ? JSON.stringify({ phone: normalizedPhone }) : undefined
       });
 
       const data = await res.json();
@@ -760,18 +817,32 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
               <a href="#bo-suu-tap" className="hover:text-white">Bộ sưu tập</a>
               <a href="#gio-lam" className="hover:text-white">Giờ làm việc</a>
               <a href="#lien-he" className="hover:text-white">Liên hệ</a>
-              <button
-                onClick={onLoginClick}
-                className="rounded-md border border-[#8d6a52] px-3 py-2 text-[#f7d9b2] hover:bg-[#2a1d2f]"
-              >
-                Đăng nhập admin
-              </button>
-              <button
-                onClick={onRegisterClick}
-                className="rounded-md border border-[#8d6a52] px-3 py-2 text-[#f7d9b2] hover:bg-[#2a1d2f]"
-              >
-                Đăng ký
-              </button>
+              {auth ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-[#f7d9b2]">Xin chào {auth.user?.name || auth.user?.username}</span>
+                  <button
+                    onClick={onLogoutClick}
+                    className="rounded-md border border-[#8d6a52] px-3 py-2 text-[#f7d9b2] hover:bg-[#2a1d2f]"
+                  >
+                    Đăng xuất
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={onLoginClick}
+                    className="rounded-md border border-[#8d6a52] px-3 py-2 text-[#f7d9b2] hover:bg-[#2a1d2f]"
+                  >
+                    Đăng nhập
+                  </button>
+                  <button
+                    onClick={onRegisterClick}
+                    className="rounded-md border border-[#8d6a52] px-3 py-2 text-[#f7d9b2] hover:bg-[#2a1d2f]"
+                  >
+                    Đăng ký
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => document.getElementById('dat-lich')?.scrollIntoView({ behavior: 'smooth' })}
                 className="rounded-md bg-[#eec8be] px-3 py-2 text-[#2a1623] hover:bg-[#ffd9cf]"
@@ -782,14 +853,27 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
           </div>
         </nav>
 
-        <section id="trang-chu" className="mt-4 overflow-hidden rounded-2xl border border-[#7f5c44]/40 bg-[#0b0712]">
+        <section id="trang-chu" className="mt-4 rounded-2xl border border-[#7f5c44]/40 bg-[#0b0712]">
           <div className="grid gap-6 md:grid-cols-[1.6fr_1fr]">
-            <div className="relative min-h-[360px] border-b border-[#7f5c44]/30 md:border-b-0 md:border-r">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_30%,#2b1b27_0%,#0b0712_55%)]" />
-              <div className="absolute -left-8 bottom-0 h-56 w-56 rounded-full bg-[#e9b7b8]/20 blur-3xl" />
-              <div className="absolute right-8 top-8 h-32 w-32 rounded-full bg-[#d5a56a]/25 blur-2xl" />
+            <div className="relative min-h-[50vh] md:min-h-[60vh] lg:min-h-[70vh] border-b border-[#7f5c44]/30 md:border-b-0 md:border-r overflow-hidden">
+              {salonSettings.hero_image?.url ? (
+                <>
+                  <img
+                    src={resolveHeroImage(salonSettings.hero_image.url)}
+                    alt="Hero"
+                    className="absolute inset-0 h-full w-full object-cover object-center"
+                  />
+                  <div className="absolute inset-0 bg-black/40" />
+                </>
+              ) : (
+                <>
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_30%,#2b1b27_0%,#0b0712_55%)]" />
+                  <div className="absolute -left-8 bottom-0 h-56 w-56 rounded-full bg-[#e9b7b8]/20 blur-3xl" />
+                  <div className="absolute right-8 top-8 h-32 w-32 rounded-full bg-[#d5a56a]/25 blur-2xl" />
+                </>
+              )}
 
-              <div className="relative z-10 flex h-full flex-col justify-center px-6 py-8 md:px-10">
+              <div className="relative z-10 flex h-full flex-col justify-start px-6 pt-[20px] pb-8 md:px-10">
                 <p className="mb-3 text-sm uppercase tracking-[0.3em] text-[#d5a56a]">Luxury Nails Spa</p>
                 <h1 className="mb-3 text-3xl font-black leading-tight text-[#f8e7d9] md:text-5xl">
                   Nâng tầm vẻ đẹp
@@ -813,26 +897,34 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
             <aside id="dat-lich" className="p-4 md:p-6">
               <div className="rounded-xl border border-[#8d6a52]/40 bg-[#140d1f] p-4 shadow-2xl shadow-black/30">
                 <h3 className="text-lg font-black uppercase tracking-wide text-[#f6d6b1]">Đặt lịch trực tuyến</h3>
-                <p className="mt-1 text-xs text-[#ccb7b8]">Điền thông tin để salon liên hệ xác nhận lịch.</p>
+                {auth ? (
+                  <p className="mt-1 text-xs text-[#ccb7b8]">Điền thông tin để salon liên hệ xác nhận lịch.</p>
+                ) : (
+                  <p className="mt-1 text-xs text-amber-400">Vui lòng đăng nhập để đặt lịch.</p>
+                )}
 
-                <form onSubmit={submitBooking} className="mt-4 space-y-3">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Họ và tên"
-                    value={booking.name}
-                    onChange={(e) => setBooking({ ...booking, name: e.target.value })}
-                    className="w-full rounded-md border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-sm text-white outline-none ring-[#d8a56c] focus:ring"
-                  />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Số điện thoại"
-                    value={booking.phone}
-                    onChange={(e) => setBooking({ ...booking, phone: e.target.value })}
-                    className="w-full rounded-md border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-sm text-white outline-none ring-[#d8a56c] focus:ring"
-                  />
-                  <div className="relative" ref={servicePickerRef}>
+                {auth ? (
+                  <form onSubmit={submitBooking} className="mt-4 space-y-3">
+                    <input
+                      type="text"
+                      disabled
+                      value={auth.user?.name || auth.user?.username || ''}
+                      className="w-full rounded-md border border-[#6f5262] bg-[#1a0f24] px-3 py-2 text-sm text-[#99878e] outline-none cursor-not-allowed"
+                    />
+                    <input
+                      type="text"
+                      disabled={!!auth.user?.phone}
+                      value={auth.user?.phone || booking.phone}
+                      onChange={(e) => !auth.user?.phone && setBooking({ ...booking, phone: e.target.value })}
+                      placeholder={auth.user?.phone ? '' : 'Vui lòng nhập số điện thoại để đặt lịch'}
+                      required={!auth.user?.phone}
+                      className={`w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring ${
+                        auth.user?.phone 
+                          ? 'border-[#6f5262] bg-[#1a0f24] text-[#99878e] cursor-not-allowed' 
+                          : 'border-[#6f5262] bg-[#0f0a17] text-white ring-[#d8a56c] focus:border-[#d8a56c]'
+                      }`}
+                    />
+                    <div className="relative" ref={servicePickerRef}>
                     <button
                       type="button"
                       onClick={() => setIsServicePickerOpen((prev) => !prev)}
@@ -895,7 +987,7 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
                     </button>
                     
                     {showCalendar && (
-                      <div className="absolute z-50 mt-1 w-full rounded-lg border border-[#8d6a52] bg-[#1a0f27] p-3 shadow-xl">
+                      <div className="absolute left-0 right-0 z-50 mt-1 rounded-lg border border-[#8d6a52] bg-[#1a0f27] p-3 shadow-xl">
                         <div className="mb-3 flex items-center justify-between">
                           <button
                             type="button"
@@ -957,6 +1049,18 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
                     )}
                   </div>
 
+                  {/* Time Picker Trigger */}
+                  <div className="relative mt-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowTimeGrid(!showTimeGrid)}
+                      className="w-full rounded-md border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-sm text-white outline-none ring-[#d8a56c] hover:border-[#d8a56c] focus:ring text-left flex justify-between items-center"
+                    >
+                      <span>🕒 {booking.appointment_time || 'Chọn khung giờ'}</span>
+                      <span className="text-xs text-[#99878e]">{showTimeGrid ? '▲' : '▼'}</span>
+                    </button>
+                  </div>
+
                   <button
                     type="submit"
                     disabled={submitting}
@@ -975,8 +1079,10 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
                     </div>
                   )}
                 </form>
+                  ) : null}
 
-                <div className="mt-4 rounded-xl border border-[#8d6a52]/35 bg-[#100a18] p-4">
+                {bookingStatus.type !== 'success' && showTimeGrid && (
+                <div className="mt-4 rounded-xl border border-[#8d6a52]/35 bg-[#100a18] p-4 animate-in fade-in slide-in-from-top-2 duration-300">
                   <h4 className="text-sm font-black uppercase tracking-wide text-[#f7d9b2]">Chọn khung giờ - Ngày {formatDisplayDate(booking.appointment_date) || '--/--/----'}</h4>
                   <p className="mt-1 text-xs text-[#cbb9bb]">
                     Khung đỏ là đã đặt, khung xanh là còn trống. Hãy click để chọn.
@@ -999,7 +1105,12 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
                             key={slot}
                             type="button"
                             disabled={isBooked}
-                            onClick={() => !isBooked && setBooking({ ...booking, appointment_time: slot })}
+                            onClick={() => {
+                              if (!isBooked) {
+                                setBooking({ ...booking, appointment_time: slot });
+                                setShowTimeGrid(false);
+                              }
+                            }}
                             className={`rounded-md border px-2 py-3 text-center text-xs font-bold transition-all ${
                               isBooked
                                 ? 'cursor-not-allowed border-rose-400/60 bg-rose-500/20 text-rose-200 opacity-50'
@@ -1011,162 +1122,172 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
                             {slot}
                             {isSelected && ' ✓'}
                           </button>
-                        );
-                      })}
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div className="mt-3 max-h-28 overflow-auto pr-1 text-xs text-[#cab7ba]">
+                        {dailySchedule.length === 0 ? (
+                          <p>Chưa có lịch hẹn nào trong ngày này.</p>
+                        ) : (
+                          dailySchedule.map((item) => (
+                            <p key={item.id} className="py-1">
+                              {item.time} • {item.customer_name} • {(item.services || []).join(', ')}
+                            </p>
+                          ))
+                        )}
+                      </div>
                     </div>
                   )}
+                {auth?.user && (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowLookupSection(!showLookupSection)}
+                    className="w-full rounded-xl border border-[#8d6a52]/40 bg-[#140d1f] p-4 text-left flex justify-between items-center hover:bg-[#1a1226] transition-all"
+                  >
+                    <span className="text-sm font-black uppercase tracking-wide text-[#f7d9b2]">🗓️ Lịch đã đặt</span>
+                    <span className="text-xs text-[#99878e]">{showLookupSection ? '▲' : '▼'}</span>
+                  </button>
 
-                  <div className="mt-3 max-h-28 overflow-auto pr-1 text-xs text-[#cab7ba]">
-                    {dailySchedule.length === 0 ? (
-                      <p>Chưa có lịch hẹn nào trong ngày này.</p>
-                    ) : (
-                      dailySchedule.map((item) => (
-                        <p key={item.id} className="py-1">
-                          {item.time} • {item.customer_name} • {(item.services || []).join(', ')}
+                  {showLookupSection && (
+                    <div className="mt-2 rounded-xl border border-[#8d6a52]/35 bg-[#100a18] p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <h4 className="text-sm font-black uppercase tracking-wide text-[#f7d9b2]">Tra cứu và cập nhật lịch đã đặt</h4>
+
+                      <div className="mt-3 flex gap-2">
+                        <div className="w-full rounded-md border border-[#6f5262] bg-[#1a0f24] px-3 py-2 text-sm text-[#99878e]">
+                          Lịch hẹn cá nhân của bạn
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => fetchCustomerAppointments()}
+                          className="rounded-md border border-[#8d6a52] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#f3d5b8] hover:bg-[#2a1d2f] whitespace-nowrap"
+                        >
+                          Làm mới
+                        </button>
+                      </div>
+
+                      {lookupStatus.message && (
+                        <p className={`mt-3 text-xs font-semibold ${lookupStatus.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
+                          {lookupStatus.message}
                         </p>
-                      ))
-                    )}
-                  </div>
-                </div>
+                      )}
 
-                <div className="mt-4 rounded-xl border border-[#8d6a52]/35 bg-[#100a18] p-4">
-                  <h4 className="text-sm font-black uppercase tracking-wide text-[#f7d9b2]">Tra cứu và cập nhật lịch đã đặt</h4>
+                      <div className="mt-3 space-y-3">
+                        {loadingCustomerAppointments ? (
+                          <p className="text-xs text-[#cbb9bb]">Đang tải lịch hẹn...</p>
+                        ) : (
+                          customerAppointments.map((apt) => {
+                            const dateTimeParts = getLocalDateTimeParts(apt.appointment_date);
 
-                  <div className="mt-3 flex gap-2">
-                    <input
-                      type="text"
-                      value={lookupPhone}
-                      onChange={(e) => setLookupPhone(e.target.value)}
-                      placeholder="Nhập số điện thoại đã đặt"
-                      className="w-full rounded-md border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-sm text-white outline-none ring-[#d8a56c] focus:ring"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fetchCustomerAppointments()}
-                      className="rounded-md border border-[#8d6a52] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#f3d5b8] hover:bg-[#2a1d2f]"
-                    >
-                      Tra cứu
-                    </button>
-                  </div>
-
-                  {lookupStatus.message && (
-                    <p className={`mt-3 text-xs font-semibold ${lookupStatus.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
-                      {lookupStatus.message}
-                    </p>
-                  )}
-
-                  <div className="mt-3 space-y-3">
-                    {loadingCustomerAppointments ? (
-                      <p className="text-xs text-[#cbb9bb]">Đang tải lịch hẹn...</p>
-                    ) : (
-                      customerAppointments.map((apt) => {
-                        const dateTimeParts = getLocalDateTimeParts(apt.appointment_date);
-
-                        return (
-                        <div key={apt.id} className="rounded-lg border border-[#8d6a52]/35 bg-[#120b1c] p-3">
-                          <p className="text-sm font-bold text-[#f7dfc2]">
-                            {dateTimeParts.time} {formatDisplayDate(dateTimeParts.date)} - {apt.status}
-                          </p>
-                          <p className="mt-1 text-xs text-[#cbb9bb]">Dịch vụ: {(apt.services || []).map((s) => s.name).join(', ') || 'N/A'}</p>
-
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => startEditingAppointment(apt)}
-                              className="rounded-md border border-[#8d6a52] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#f3d5b8] hover:bg-[#2a1d2f]"
-                            >
-                              Sửa
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => cancelAppointmentByCustomer(apt.id)}
-                              className="rounded-md border border-amber-400/60 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-200 hover:bg-amber-500/20"
-                            >
-                              Hủy
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => deleteAppointmentByCustomer(apt.id)}
-                              className="rounded-md border border-rose-400/60 px-3 py-1 text-xs font-bold uppercase tracking-wide text-rose-200 hover:bg-rose-500/20"
-                            >
-                              Xóa
-                            </button>
-                          </div>
-
-                          {editingAppointmentId === apt.id && (
-                            <div className="mt-3 rounded-md border border-[#6f5262] bg-[#0f0a17] p-3">
-                              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#d8a56c]">Cập nhật lịch hẹn</p>
-
-                              <div className="grid grid-cols-2 gap-2">
-                                <input
-                                  type="date"
-                                  value={editForm.appointment_date}
-                                  onChange={(e) => setEditForm((prev) => ({ ...prev, appointment_date: e.target.value }))}
-                                  className="rounded-md border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-xs text-white outline-none ring-[#d8a56c] focus:ring"
-                                />
-                                <input
-                                  type="time"
-                                  value={editForm.appointment_time}
-                                  onChange={(e) => setEditForm((prev) => ({ ...prev, appointment_time: e.target.value }))}
-                                  className="rounded-md border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-xs text-white outline-none ring-[#d8a56c] focus:ring"
-                                />
+                            return (
+                            <div key={apt.id} className="rounded-lg border border-[#7f5c44]/30 bg-[#170f22]/50 p-3">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-sm font-black text-[#f7dfc2]">
+                                    {dateTimeParts.time} {formatDisplayDate(dateTimeParts.date)} - <span className="italic opacity-80">{apt.status}</span>
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-[#cbb9bb]">
+                                    Dịch vụ: {(apt.services || []).map((s) => s.name).join(', ')}
+                                  </p>
+                                </div>
                               </div>
 
-                              <div className="mt-2 max-h-36 space-y-2 overflow-auto pr-1">
-                                {services.map((service) => {
-                                  const checked = editForm.service_ids.includes(service.id);
-                                  return (
-                                    <label
-                                      key={service.id}
-                                      className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-xs ${
-                                        checked
-                                          ? 'border-amber-400 bg-amber-500/20 text-amber-100'
-                                          : 'border-[#6f5262] bg-[#120b1c] text-[#f8e7d9]'
-                                      }`}
+                              <div className="mt-3 flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEdit(apt)}
+                                  className="rounded-md border border-[#8d6a52] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#f3d5b8] hover:bg-[#2a1d2f]"
+                                >
+                                  Sửa
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteAppointmentByCustomer(apt.id)}
+                                  className="rounded-md border border-rose-500/50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-rose-300 hover:bg-rose-500/20"
+                                >
+                                  Xóa
+                                </button>
+                              </div>
+
+                              {editingAppointmentId === apt.id && (
+                                <div className="mt-3 rounded-md border border-[#6f5262] bg-[#0f0a17] p-3">
+                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#d8a56c]">Cập nhật lịch hẹn</p>
+
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <input
+                                      type="date"
+                                      value={editForm.appointment_date}
+                                      onChange={(e) => setEditForm((prev) => ({ ...prev, appointment_date: e.target.value }))}
+                                      className="rounded-md border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-xs text-white outline-none ring-[#d8a56c] focus:ring"
+                                    />
+                                    <input
+                                      type="time"
+                                      value={editForm.appointment_time}
+                                      onChange={(e) => setEditForm((prev) => ({ ...prev, appointment_time: e.target.value }))}
+                                      className="rounded-md border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-xs text-white outline-none ring-[#d8a56c] focus:ring"
+                                    />
+                                  </div>
+
+                                  <div className="mt-2 max-h-36 space-y-2 overflow-auto pr-1">
+                                    {services.map((service) => {
+                                      const checked = editForm.service_ids.includes(service.id);
+                                      return (
+                                        <label
+                                          key={service.id}
+                                          className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-xs ${
+                                            checked
+                                              ? 'border-amber-400 bg-amber-500/20 text-amber-100'
+                                              : 'border-[#6f5262] bg-[#120b1c] text-[#f8e7d9]'
+                                          }`}
+                                        >
+                                          <span>{service.name}</span>
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => toggleEditServiceSelection(service.id)}
+                                            className="h-4 w-4 accent-[#f0c6bb]"
+                                          />
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+
+                                  <textarea
+                                    value={editForm.notes}
+                                    onChange={(e) => setEditForm((prev) => ({ ...prev, notes: e.target.value }))}
+                                    placeholder="Ghi chú (không bắt buộc)"
+                                    className="mt-2 w-full rounded-md border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-xs text-white outline-none ring-[#d8a56c] focus:ring"
+                                  />
+
+                                  <div className="mt-2 flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => submitEditAppointment(apt.id)}
+                                      className="rounded-md bg-[#f0c6bb] px-3 py-2 text-xs font-black uppercase tracking-wide text-[#2a1724] hover:bg-[#ffd9cf]"
                                     >
-                                      <span>{service.name}</span>
-                                      <input
-                                        type="checkbox"
-                                        checked={checked}
-                                        onChange={() => toggleEditServiceSelection(service.id)}
-                                        className="h-4 w-4 accent-[#f0c6bb]"
-                                      />
-                                    </label>
-                                  );
-                                })}
+                                      Cập nhật
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingAppointmentId(null)}
+                                      className="rounded-md border border-[#8d6a52] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#f3d5b8] hover:bg-[#2a1d2f]"
+                                    >
+                                      Hủy sửa
+                                    </button>
+                                  </div>
+                                </div>
+                                  )}
                               </div>
-
-                              <textarea
-                                value={editForm.notes}
-                                onChange={(e) => setEditForm((prev) => ({ ...prev, notes: e.target.value }))}
-                                placeholder="Ghi chú (không bắt buộc)"
-                                className="mt-2 w-full rounded-md border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-xs text-white outline-none ring-[#d8a56c] focus:ring"
-                              />
-
-                              <div className="mt-2 flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => submitEditAppointment(apt.id)}
-                                  className="rounded-md bg-[#f0c6bb] px-3 py-2 text-xs font-black uppercase tracking-wide text-[#2a1724] hover:bg-[#ffd9cf]"
-                                >
-                                  Cập nhật
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingAppointmentId(null)}
-                                  className="rounded-md border border-[#8d6a52] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#f3d5b8] hover:bg-[#2a1d2f]"
-                                >
-                                  Hủy sửa
-                                </button>
-                              </div>
-                            </div>
+                              )
+                            })
                           )}
                         </div>
-                        );
-                      })
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
+              )}
               </div>
             </aside>
           </div>
@@ -1230,7 +1351,7 @@ function PublicHome({ onLoginClick, onRegisterClick }) {
 
         <footer id="gio-lam" className="mt-6 rounded-2xl border border-[#7f5c44]/40 bg-[#120b1c] p-5 text-sm text-[#bfaeb0]">
           <p className="mb-2"><span className="font-bold text-[#f6d6b1]">Giờ làm việc:</span> {formatWorkingHoursSummary(salonSettings.working_hours)}</p>
-          <p id="lien-he"><span className="font-bold text-[#f6d6b1]">Liên hệ:</span> {salonSettings.salon_phone || '0900 123 456'}</p>
+          <p id="lien-he"><span className="font-bold text-[#f6d6b1]">Liên hệ:</span> {salonSettings.salon_phone || 'Đang cập nhật'}</p>
         </footer>
       </div>
     </div>
@@ -1241,12 +1362,15 @@ function LoginRegister({ setAuth, onBack, initialMode = 'login' }) {
   const [isLogin, setIsLogin] = useState(initialMode !== 'register');
   const [formData, setFormData] = useState({
     username: '',
+    email: '',
     password: '',
     phone: '',
     password_confirmation: ''
   });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     setIsLogin(initialMode !== 'register');
@@ -1265,10 +1389,11 @@ function LoginRegister({ setAuth, onBack, initialMode = 'login' }) {
       ? { username: formData.username, password: formData.password }
       : {
           username: formData.username,
+          email: formData.email,
           phone: formData.phone,
           password: formData.password,
           password_confirmation: formData.password_confirmation,
-          role: 'admin'
+          role: 'customer'
         };
 
     try {
@@ -1284,9 +1409,16 @@ function LoginRegister({ setAuth, onBack, initialMode = 'login' }) {
 
       const data = await res.json();
       const responseUser = data?.user || data?.data?.user || null;
+      const responseToken = data?.token || data?.data?.token || null;
 
       if (!res.ok) {
-        setError(data?.message || 'Đăng nhập thất bại.');
+        if (data?.errors) {
+          // Get the first error message from any field
+          const firstError = Object.values(data.errors).flat()[0];
+          setError(firstError || data?.message || 'Đăng ký thất bại.');
+        } else {
+          setError(data?.message || 'Đăng ký thất bại.');
+        }
         return;
       }
 
@@ -1295,12 +1427,11 @@ function LoginRegister({ setAuth, onBack, initialMode = 'login' }) {
         return;
       }
 
-      if (responseUser.role !== 'admin') {
-        setError('Chỉ tài khoản admin mới được phép đăng nhập.');
-        return;
+      if (responseToken) {
+        localStorage.setItem('auth_token', responseToken);
       }
 
-      setAuth({ user: responseUser });
+      setAuth({ user: responseUser, token: responseToken });
     } catch (error) {
       setError('Không thể kết nối đến máy chủ.');
     } finally {
@@ -1320,7 +1451,7 @@ function LoginRegister({ setAuth, onBack, initialMode = 'login' }) {
 
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#d5a56a]">Luxury Nails Spa</p>
         <h1 className="mb-1 mt-2 text-3xl font-black text-[#f7dfc2]">{isLogin ? 'Đăng nhập' : 'Đăng ký'}</h1>
-        <p className="mb-6 text-[#cbb9bb]">{isLogin ? 'Đăng nhập tài khoản admin' : 'Tạo tài khoản admin mới'}</p>
+        <p className="mb-6 text-[#cbb9bb]">{isLogin ? 'Đăng nhập để đặt lịch và quản lý' : 'Tạo tài khoản để đặt lịch'}</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
@@ -1334,6 +1465,17 @@ function LoginRegister({ setAuth, onBack, initialMode = 'login' }) {
 
           {!isLogin && (
             <input
+              required
+              type="email"
+              placeholder="Email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
+            />
+          )}
+
+          {!isLogin && (
+            <input
               type="text"
               placeholder="Số điện thoại"
               value={formData.phone}
@@ -1342,24 +1484,42 @@ function LoginRegister({ setAuth, onBack, initialMode = 'login' }) {
             />
           )}
 
-          <input
-            required
-            type="password"
-            placeholder="Mật khẩu"
-            value={formData.password}
-            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
-          />
-
-          {!isLogin && (
+          <div className="relative">
             <input
               required
-              type="password"
-              placeholder="Xác nhận mật khẩu"
-              value={formData.password_confirmation}
-              onChange={(e) => setFormData({ ...formData, password_confirmation: e.target.value })}
-              className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Mật khẩu"
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring pr-10"
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#99878e] hover:text-[#f0c6bb]"
+            >
+              {showPassword ? '👁️' : '👁️‍🗨️'}
+            </button>
+          </div>
+
+          {!isLogin && (
+            <div className="relative">
+              <input
+                required
+                type={showConfirmPassword ? 'text' : 'password'}
+                placeholder="Xác nhận mật khẩu"
+                value={formData.password_confirmation}
+                onChange={(e) => setFormData({ ...formData, password_confirmation: e.target.value })}
+                className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#99878e] hover:text-[#f0c6bb]"
+              >
+                {showConfirmPassword ? '👁️' : '👁️‍🗨️'}
+              </button>
+            </div>
           )}
 
           {error && <p className="text-sm font-semibold text-[#ff9aa7]">{error}</p>}
@@ -1371,6 +1531,30 @@ function LoginRegister({ setAuth, onBack, initialMode = 'login' }) {
           >
             {submitting ? 'Đang xử lý...' : isLogin ? 'Đăng nhập' : 'Đăng ký'}
           </button>
+
+          <>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-[#6f5262]"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-[#1a0f1d] text-[#99878e]">Hoặc</span>
+              </div>
+            </div>
+
+            <a
+              href={`${API_BASE_URL}/api/auth/google`}
+              className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] py-3 px-4 font-bold uppercase tracking-wide text-[#f0c6bb] hover:bg-[#1a0f1d] flex items-center justify-center gap-2 transition-colors"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              {isLogin ? 'Đăng nhập với Google' : 'Đăng ký với Google'}
+            </a>
+          </>
         </form>
 
         <p className="mt-6 text-center text-sm text-[#cbb9bb]">
@@ -1426,10 +1610,11 @@ function CustomerDashboard({ auth, setAuth }) {
   const fetchMyAppointments = async () => {
     setLoading(true);
     try {
+      const authToken = localStorage.getItem('auth_token');
       const res = await fetch(`${API_BASE_URL}/api/my-appointments`, {
-        credentials: 'include',
         headers: {
-          Accept: 'application/json'
+          Accept: 'application/json',
+          Authorization: `Bearer ${authToken}`
         }
       });
       const data = await res.json();
@@ -1449,6 +1634,8 @@ function CustomerDashboard({ auth, setAuth }) {
         headers: { Accept: 'application/json' }
       });
     } finally {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('adminAuth');
       setAuth(null);
     }
   };
@@ -1548,29 +1735,73 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     salon_phone: '',
     working_hours: getDefaultWorkingHours()
   });
+  const [salonSettings, setSalonSettings] = useState({
+    hero_image: null
+  });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState({ type: '', text: '' });
+  const [heroImageUploading, setHeroImageUploading] = useState(false);
+  const [heroImageMessage, setHeroImageMessage] = useState({ type: '', text: '' });
+  const [heroSelectedFileName, setHeroSelectedFileName] = useState('Chưa chọn ảnh');
+  const heroFileInputRef = useRef(null);
   const [appointmentMessage, setAppointmentMessage] = useState({ type: '', text: '' });
   const [isSubmittingAppointment, setIsSubmittingAppointment] = useState(false);
   const [editingAppointmentId, setEditingAppointmentId] = useState(null);
   const [newAppointmentForm, setNewAppointmentForm] = useState({
     name: '',
     phone: '',
-    staff_id: '',
+    staff_id: '1',
     appointment_date: '',
     appointment_time: '09:00',
     service_ids: [],
     notes: ''
   });
+
   const [editAppointmentForm, setEditAppointmentForm] = useState({
-    staff_id: '',
+    staff_id: '1',
     appointment_date: '',
     appointment_time: '09:00',
     service_ids: [],
     status: 'pending',
     notes: ''
   });
+
+  const [isNewAptServicePickerOpen, setIsNewAptServicePickerOpen] = useState(false);
+  const [isEditAptServicePickerOpen, setIsEditAptServicePickerOpen] = useState(false);
+  const newAptServicePickerRef = useRef(null);
+  const editAptServicePickerRef = useRef(null);
+
+  const [showNewAptCalendar, setShowNewAptCalendar] = useState(false);
+  const [showEditAptCalendar, setShowEditAptCalendar] = useState(false);
+  const [newAptCalendarMonth, setNewAptCalendarMonth] = useState(new Date());
+  const [editAptCalendarMonth, setEditAptCalendarMonth] = useState(new Date());
+
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
+  const [bookedSlots, setBookedSlots] = useState([]);
+  const [dailySchedule, setDailySchedule] = useState([]);
+  const [showNewAptTimeGrid, setShowNewAptTimeGrid] = useState(false);
+  const [showEditAptTimeGrid, setShowEditAptTimeGrid] = useState(false);
+
+  const [users, setUsers] = useState([]);
+  const [userForm, setUserForm] = useState({ name: '', username: '', email: '', phone: '', password: '', role: 'customer' });
+  const [userMessage, setUserMessage] = useState({ type: '', text: '' });
+  const [editingUserId, setEditingUserId] = useState(null);
+  const [editUserForm, setEditUserForm] = useState({ name: '', username: '', email: '', phone: '', password: '', role: 'customer' });
+  const [showUserPassword, setShowUserPassword] = useState(false);
+  const [showEditUserPassword, setShowEditUserPassword] = useState(false);
+
+  const EXPIRED_TOKEN_MESSAGE = 'Vui lòng thoát và đăng nhập lại';
+
+  const getAuthHeaders = (extraHeaders = {}) => {
+    const authToken = localStorage.getItem('auth_token');
+
+    return {
+      Accept: 'application/json',
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...extraHeaders
+    };
+  };
 
   useEffect(() => {
     if (page === 'services') {
@@ -1581,8 +1812,96 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       fetchAppointments();
     } else if (page === 'settings') {
       fetchSalonSettings();
+    } else if (page === 'users') {
+      fetchUsers();
     }
   }, [page]);
+  
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (newAptServicePickerRef.current && !newAptServicePickerRef.current.contains(event.target)) {
+        setIsNewAptServicePickerOpen(false);
+      }
+      if (editAptServicePickerRef.current && !editAptServicePickerRef.current.contains(event.target)) {
+        setIsEditAptServicePickerOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    const selectedDate = newAppointmentForm.appointment_date || editAppointmentForm.appointment_date;
+    if (!selectedDate) return;
+
+    const loadSchedule = async () => {
+      setLoadingSchedule(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/appointments/schedule?date=${selectedDate}`, {
+          headers: getAuthHeaders()
+        });
+        const data = await res.json();
+        const payload = data?.data || {};
+        setBookedSlots(payload?.booked_slots || []);
+        setDailySchedule(payload?.appointments || []);
+      } catch (error) {
+        console.error('❌ Schedule loading error:', error);
+      } finally {
+        setLoadingSchedule(false);
+      }
+    };
+
+    loadSchedule();
+  }, [newAppointmentForm.appointment_date, editAppointmentForm.appointment_date]);
+
+  const today = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const getAllTimeSlots = useMemo(() => (
+    Array.from({ length: 12 }, (_, index) => `${String(index + 9).padStart(2, '0')}:00`)
+  ), []);
+
+  const getAvailableTimeSlots = (selectedDate) => {
+    if (selectedDate === today) {
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      return getAllTimeSlots.filter((slot) => {
+        const [slotHour, slotMinute] = slot.split(':').map(Number);
+        return (slotHour > currentHour) || (slotHour === currentHour && slotMinute >= currentMinute + 30);
+      });
+    }
+    return getAllTimeSlots;
+  };
+
+  const handleNewAptDateSelect = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    setNewAppointmentForm((prev) => ({ ...prev, appointment_date: dateStr }));
+    setShowNewAptCalendar(false);
+  };
+
+  const handleEditAptDateSelect = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    setEditAppointmentForm((prev) => ({ ...prev, appointment_date: dateStr }));
+    setShowEditAptCalendar(false);
+  };
+
+  const handleMonthChangeHelper = (setter, currentMonth, increment) => {
+    const newMonth = new Date(currentMonth);
+    newMonth.setMonth(newMonth.getMonth() + increment);
+    setter(newMonth);
+  };
 
   const toggleNewAppointmentService = (serviceId) => {
     setNewAppointmentForm((prev) => {
@@ -1607,13 +1926,18 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const fetchSalonSettings = async () => {
     setSettingsLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/salon-settings`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/salon-settings`, {
         credentials: 'include',
-        headers: { Accept: 'application/json' }
+        headers: getAuthHeaders()
       });
 
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 401) {
+          setSettingsMessage({ type: 'error', text: EXPIRED_TOKEN_MESSAGE });
+          return;
+        }
+
         setSettingsMessage({ type: 'error', text: data?.message || 'Không thể tải cài đặt salon.' });
         return;
       }
@@ -1623,6 +1947,9 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
         salon_phone: payload.salon_phone || '',
         working_hours: normalizeWorkingHours(payload.working_hours)
       });
+      setSalonSettings({
+        hero_image: payload.hero_image || null
+      });
       setSettingsMessage({ type: '', text: '' });
     } catch (error) {
       console.error(error);
@@ -1630,6 +1957,93 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     } finally {
       setSettingsLoading(false);
     }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/users`, {
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (res.ok) setUsers(data.data || []);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const addUser = async (e) => {
+    e.preventDefault();
+    setUserMessage({ type: '', text: '' });
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/users`, {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(userForm)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUserMessage({ type: 'success', text: 'Thêm người dùng thành công' });
+        setUserForm({ name: '', username: '', email: '', phone: '', password: '', role: 'customer' });
+        fetchUsers();
+      } else {
+        setUserMessage({ type: 'error', text: data.message || 'Lỗi khi thêm người dùng' });
+      }
+    } catch (error) {
+      setUserMessage({ type: 'error', text: 'Lỗi kết nối' });
+    }
+  };
+
+  const updateUser = async (id) => {
+    setUserMessage({ type: '', text: '' });
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/users/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(editUserForm)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUserMessage({ type: 'success', text: 'Cập nhật thành công' });
+        setEditingUserId(null);
+        fetchUsers();
+      } else {
+        setUserMessage({ type: 'error', text: data.message || 'Lỗi khi cập nhật' });
+      }
+    } catch (error) {
+      setUserMessage({ type: 'error', text: 'Lỗi kết nối' });
+    }
+  };
+
+  const deleteUser = async (id) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa người dùng này?')) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/users/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUserMessage({ type: 'success', text: 'Đã xóa người dùng thành công.' });
+        fetchUsers();
+      } else {
+        setUserMessage({ type: 'error', text: data.message || 'Lỗi khi xóa người dùng.' });
+      }
+    } catch (error) {
+      console.error(error);
+      setUserMessage({ type: 'error', text: 'Lỗi kết nối khi xóa người dùng.' });
+    }
+  };
+
+  const startEditUser = (user) => {
+    setEditingUserId(user.id);
+    setEditUserForm({
+      name: user.name || '',
+      username: user.username || '',
+      email: user.email || '',
+      phone: user.phone || '',
+      password: '',
+      role: user.role || 'customer'
+    });
   };
 
   const updateWorkingHourValue = (dayKey, field, value) => {
@@ -1645,6 +2059,71 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     }));
   };
 
+  const uploadHeroImage = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setHeroSelectedFileName(file.name);
+
+    setHeroImageUploading(true);
+    setHeroImageMessage({ type: '', text: '' });
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const res = await fetch(`${API_BASE_URL}/api/salon-settings/upload-hero`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAuthHeaders(),
+        body: formData
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      const data = contentType.includes('application/json') ? await res.json() : null;
+      if (!res.ok) {
+        if (res.status === 401) {
+          setHeroImageMessage({ type: 'error', text: EXPIRED_TOKEN_MESSAGE });
+          return;
+        }
+
+        const fallbackMessage = data?.message || (contentType.includes('text/html') ? 'Máy chủ trả về trang HTML thay vì JSON. Hãy kiểm tra đăng nhập hoặc log backend.' : 'Không thể tải ảnh hero.');
+        setHeroImageMessage({ type: 'error', text: fallbackMessage });
+        return;
+      }
+
+      setHeroImageMessage({ type: 'success', text: data?.message || 'Ảnh hero được tải lên thành công.' });
+      
+      // Reload public salon settings to display new hero image
+      try {
+        const settingsRes = await fetch(`${API_BASE_URL}/api/admin/salon-settings`, {
+          credentials: 'include',
+          headers: getAuthHeaders()
+        });
+        if (settingsRes.ok) {
+          const settingsData = await settingsRes.json();
+          const settings = settingsData?.data || {};
+          setSalonSettings((prev) => ({
+            ...prev,
+            hero_image: settings.hero_image || null
+          }));
+        }
+      } catch (error) {
+        console.error('Error reloading salon settings:', error);
+      }
+      
+      // Reset file input
+      if (heroFileInputRef.current) {
+        heroFileInputRef.current.value = '';
+      }
+    } catch (error) {
+      console.error(error);
+      setHeroImageMessage({ type: 'error', text: 'Lỗi kết nối khi tải ảnh hero.' });
+    } finally {
+      setHeroImageUploading(false);
+    }
+  };
+
   const updateSalonSettings = async (e) => {
     e.preventDefault();
     setSettingsSaving(true);
@@ -1654,10 +2133,9 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const res = await fetch(`${API_BASE_URL}/api/salon-settings`, {
         method: 'PUT',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json'
-        },
+        headers: getAuthHeaders({
+          'Content-Type': 'application/json'
+        }),
         body: JSON.stringify({
           salon_phone: settingsForm.salon_phone,
           working_hours: settingsForm.working_hours
@@ -1666,6 +2144,11 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
 
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 401) {
+          setSettingsMessage({ type: 'error', text: EXPIRED_TOKEN_MESSAGE });
+          return;
+        }
+
         setSettingsMessage({ type: 'error', text: data?.message || 'Không thể cập nhật cài đặt salon.' });
         return;
       }
@@ -1683,7 +2166,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     try {
       const res = await fetch(`${API_BASE_URL}/api/services`, {
         credentials: 'include',
-        headers: { Accept: 'application/json' }
+        headers: getAuthHeaders()
       });
 
       if (!res.ok) {
@@ -1711,7 +2194,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     try {
       const res = await fetch(`${API_BASE_URL}/api/staffs`, {
         credentials: 'include',
-        headers: { Accept: 'application/json' }
+        headers: getAuthHeaders()
       });
 
       if (!res.ok) {
@@ -1747,7 +2230,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     try {
       const res = await fetch(`${API_BASE_URL}/api/appointments`, {
         credentials: 'include',
-        headers: { Accept: 'application/json' }
+        headers: getAuthHeaders()
       });
       
       if (!res.ok) {
@@ -1775,8 +2258,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const updateAppointmentStatus = async (id, statusAction) => {
     const actionLabelMap = {
       confirm: 'xác nhận lịch hẹn này',
-      reject: 'từ chối lịch hẹn này',
-      cancel: 'hủy lịch hẹn này'
+      reject: 'từ chối lịch hẹn này'
     };
 
     const actionLabel = actionLabelMap[statusAction] || 'thay đổi trạng thái lịch hẹn này';
@@ -1786,16 +2268,18 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const res = await fetch(`${API_BASE_URL}/api/appointments/${id}/${statusAction}`, {
         method: 'PATCH',
         credentials: 'include',
-        headers: { Accept: 'application/json' }
+        headers: getAuthHeaders()
       });
       if (res.ok) {
+        setAppointmentMessage({ type: 'success', text: `Đã ${statusAction === 'confirm' ? 'xác nhận' : 'từ chối'} lịch hẹn thành công.` });
         fetchAppointments();
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(data?.message || 'Có lỗi xảy ra');
+        setAppointmentMessage({ type: 'error', text: data?.message || 'Có lỗi xảy ra khi cập nhật trạng thái.' });
       }
     } catch (e) {
       console.error(e);
+      setAppointmentMessage({ type: 'error', text: 'Lỗi kết nối khi cập nhật trạng thái lịch hẹn.' });
     }
   };
 
@@ -1803,8 +2287,8 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     e.preventDefault();
     setAppointmentMessage({ type: '', text: '' });
 
-    if (!newAppointmentForm.name || !newAppointmentForm.phone || !newAppointmentForm.staff_id || !newAppointmentForm.appointment_date || newAppointmentForm.service_ids.length === 0) {
-      setAppointmentMessage({ type: 'error', text: 'Vui lòng nhập đủ tên, số điện thoại, nhân viên, ngày giờ và dịch vụ.' });
+    if (!newAppointmentForm.name || !newAppointmentForm.phone || !newAppointmentForm.appointment_date || newAppointmentForm.service_ids.length === 0) {
+      setAppointmentMessage({ type: 'error', text: 'Vui lòng nhập đủ tên, số điện thoại, ngày giờ và dịch vụ.' });
       return;
     }
 
@@ -1814,7 +2298,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const payload = {
         name: newAppointmentForm.name,
         phone: newAppointmentForm.phone,
-        staff_id: Number(newAppointmentForm.staff_id),
+        staff_id: 1, // Default staff
         appointment_date: `${newAppointmentForm.appointment_date} ${newAppointmentForm.appointment_time}:00`,
         services: newAppointmentForm.service_ids,
         notes: newAppointmentForm.notes || null
@@ -1823,10 +2307,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const res = await fetch(`${API_BASE_URL}/api/appointments/create-manual`, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json'
-        },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload)
       });
 
@@ -1859,7 +2340,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     const dateParts = getLocalDateTimeParts(appointment.appointment_date);
     setEditingAppointmentId(appointment.id);
     setEditAppointmentForm({
-      staff_id: String(appointment.staff_id || ''),
+      staff_id: '1',
       appointment_date: dateParts.date,
       appointment_time: dateParts.time,
       service_ids: (appointment.services || []).map((item) => Number(item.id)),
@@ -1870,14 +2351,14 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   };
 
   const submitEditAppointmentByAdmin = async (appointmentId) => {
-    if (!editAppointmentForm.staff_id || !editAppointmentForm.appointment_date || editAppointmentForm.service_ids.length === 0) {
-      setAppointmentMessage({ type: 'error', text: 'Vui lòng nhập đủ nhân viên, ngày giờ và dịch vụ khi cập nhật.' });
+    if (!editAppointmentForm.appointment_date || editAppointmentForm.service_ids.length === 0) {
+      setAppointmentMessage({ type: 'error', text: 'Vui lòng nhập đủ ngày giờ và dịch vụ khi cập nhật.' });
       return;
     }
 
     try {
       const payload = {
-        staff_id: Number(editAppointmentForm.staff_id),
+        staff_id: 1, // Default staff
         appointment_date: `${editAppointmentForm.appointment_date} ${editAppointmentForm.appointment_time}:00`,
         services: editAppointmentForm.service_ids,
         status: editAppointmentForm.status,
@@ -1887,10 +2368,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const res = await fetch(`${API_BASE_URL}/api/appointments/${appointmentId}/admin`, {
         method: 'PUT',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json'
-        },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload)
       });
 
@@ -1916,7 +2394,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const res = await fetch(`${API_BASE_URL}/api/appointments/${appointmentId}/admin`, {
         method: 'DELETE',
         credentials: 'include',
-        headers: { Accept: 'application/json' }
+        headers: getAuthHeaders()
       });
 
       const data = await res.json().catch(() => ({}));
@@ -1954,9 +2432,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const res = await fetch(`${API_BASE_URL}/api/services`, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          Accept: 'application/json'
-        },
+        headers: getAuthHeaders(),
         body: payload
       });
 
@@ -1996,14 +2472,21 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const deleteService = async (id) => {
     if (!window.confirm('Xác nhận xóa?')) return;
     try {
-      await fetch(`${API_BASE_URL}/api/services/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/services/${id}`, {
         method: 'DELETE',
         credentials: 'include',
-        headers: { Accept: 'application/json' }
+        headers: getAuthHeaders()
       });
-      fetchServices();
+      if (res.ok) {
+        setServiceFormMessage({ type: 'success', text: 'Đã xóa dịch vụ thành công.' });
+        fetchServices();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setServiceFormMessage({ type: 'error', text: data?.message || 'Lỗi khi xóa dịch vụ.' });
+      }
     } catch (e) {
       console.error(e);
+      setServiceFormMessage({ type: 'error', text: 'Lỗi kết nối khi xóa dịch vụ.' });
     }
   };
 
@@ -2035,9 +2518,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const res = await fetch(`${API_BASE_URL}/api/services/${id}`, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          Accept: 'application/json'
-        },
+        headers: getAuthHeaders(),
         body: payload
       });
 
@@ -2079,9 +2560,11 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       await fetch(`${API_BASE_URL}/api/logout`, {
         method: 'POST',
         credentials: 'include',
-        headers: { Accept: 'application/json' }
+        headers: getAuthHeaders()
       });
     } finally {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('adminAuth');
       setAuth(null);
     }
   };
@@ -2145,6 +2628,16 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
               }`}
             >
               Cài đặt salon
+            </button>
+            <button
+              onClick={() => setPage('users')}
+              className={`mt-2 w-full rounded-lg px-4 py-2 text-left font-semibold transition ${
+                page === 'users'
+                  ? 'bg-[#2a1d2f] text-[#f7dfc2] border border-[#8d6a52]'
+                  : 'text-[#d7c4c6] hover:bg-[#24182a]'
+              }`}
+            >
+              Tài khoản
             </button>
           </aside>
 
@@ -2335,55 +2828,177 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                       onChange={(e) => setNewAppointmentForm((prev) => ({ ...prev, phone: e.target.value }))}
                       className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
                     />
-                    <select
-                      value={newAppointmentForm.staff_id}
-                      onChange={(e) => setNewAppointmentForm((prev) => ({ ...prev, staff_id: e.target.value }))}
-                      className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                    >
-                      <option value="">Chọn nhân viên</option>
-                      {staffs.map((staff) => (
-                        <option key={staff.id} value={staff.id}>{staff.name || staff.full_name || `Staff #${staff.id}`}</option>
-                      ))}
-                    </select>
+
+                    <div className="relative" ref={newAptServicePickerRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsNewAptServicePickerOpen((prev) => !prev)}
+                        className="w-full rounded-md border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-left text-sm text-white outline-none ring-[#d8a56c] hover:border-[#d8a56c] focus:ring"
+                      >
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[#d8a56c]">Chọn dịch vụ</p>
+                        <p className="mt-1 text-xs text-[#cbb9bb]">
+                          {newAppointmentForm.service_ids.length > 0
+                            ? services.filter(s => newAppointmentForm.service_ids.includes(s.id)).map(s => s.name).join(', ')
+                            : 'Chọn dịch vụ'}
+                        </p>
+                      </button>
+
+                      {isNewAptServicePickerOpen && (
+                        <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border border-[#8d6a52] bg-[#1a0f27] p-3 shadow-xl">
+                          <div className="max-h-48 space-y-2 overflow-auto pr-1">
+                            {services.map((service) => {
+                              const checked = newAppointmentForm.service_ids.includes(service.id);
+                              return (
+                                <label
+                                  key={service.id}
+                                  className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm transition ${
+                                    checked
+                                      ? 'border-amber-400 bg-amber-500/20 text-amber-100'
+                                      : 'border-[#6f5262] bg-[#120b1c] text-[#f8e7d9] hover:border-[#8d6a52]'
+                                  }`}
+                                >
+                                  <span>{service.name}</span>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleNewAppointmentService(service.id)}
+                                    className="h-4 w-4 accent-[#f0c6bb]"
+                                  />
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsNewAptServicePickerOpen(false)}
+                            className="mt-3 w-full rounded-md bg-[#f0c6bb] py-2 text-xs font-black uppercase text-[#2a1724]"
+                          >
+                            Xong
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="date"
-                        value={newAppointmentForm.appointment_date}
-                        onChange={(e) => setNewAppointmentForm((prev) => ({ ...prev, appointment_date: e.target.value }))}
-                        className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                      />
-                      <input
-                        type="time"
-                        value={newAppointmentForm.appointment_time}
-                        onChange={(e) => setNewAppointmentForm((prev) => ({ ...prev, appointment_time: e.target.value }))}
-                        className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                      />
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setShowNewAptCalendar(!showNewAptCalendar)}
+                          className="w-full rounded-md border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-left text-sm text-white outline-none ring-[#d8a56c] hover:border-[#d8a56c] focus:ring"
+                        >
+                          📅 {formatDisplayDate(newAppointmentForm.appointment_date) || 'Chọn ngày'}
+                        </button>
+                        
+                        {showNewAptCalendar && (
+                          <div className="absolute z-50 mt-1 w-64 rounded-lg border border-[#8d6a52] bg-[#1a0f27] p-3 shadow-xl left-0">
+                            <div className="mb-3 flex items-center justify-between">
+                              <button
+                                type="button"
+                                onClick={() => handleMonthChangeHelper(setNewAptCalendarMonth, newAptCalendarMonth, -1)}
+                                className="rounded px-2 py-1 text-[#f7d9b2] hover:bg-[#2a1d2f]"
+                              >
+                                ‹
+                              </button>
+                              <div className="text-center text-xs font-bold text-[#f7d9b2]">
+                                {newAptCalendarMonth.toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' })}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleMonthChangeHelper(setNewAptCalendarMonth, newAptCalendarMonth, 1)}
+                                className="rounded px-2 py-1 text-[#f7d9b2] hover:bg-[#2a1d2f]"
+                              >
+                                ›
+                              </button>
+                            </div>
+
+                            <div className="mb-2 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-[#d8a56c]">
+                              {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map(day => (
+                                <div key={day}>{day}</div>
+                              ))}
+                            </div>
+
+                            <div className="grid grid-cols-7 gap-1">
+                              {calculateCalendarDays(newAptCalendarMonth).map((date, i) => {
+                                let dateStr = null;
+                                if (date) {
+                                  const year = date.getFullYear();
+                                  const month = String(date.getMonth() + 1).padStart(2, '0');
+                                  const day = String(date.getDate()).padStart(2, '0');
+                                  dateStr = `${year}-${month}-${day}`;
+                                }
+                                const isSelected = dateStr === newAppointmentForm.appointment_date;
+                                
+                                return (
+                                  <button
+                                    key={i}
+                                    type="button"
+                                    disabled={!date}
+                                    onClick={() => date && handleNewAptDateSelect(date)}
+                                    className={`rounded px-1 py-1 text-[10px] font-semibold ${
+                                      !date
+                                        ? 'text-[#6f5262]'
+                                        : isSelected
+                                        ? 'bg-[#f7d9b2] text-[#2a1724]'
+                                        : 'bg-[#2a1d2f] text-[#f7d9b2] hover:bg-[#3a2d3f]'
+                                    }`}
+                                  >
+                                    {date?.getDate()}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowNewAptTimeGrid(!showNewAptTimeGrid)}
+                        className="w-full rounded-md border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-left text-sm text-white outline-none ring-[#d8a56c] hover:border-[#d8a56c] focus:ring flex justify-between items-center"
+                      >
+                        <span>🕒 {newAppointmentForm.appointment_time || 'Giờ'}</span>
+                        <span className="text-[10px]">{showNewAptTimeGrid ? '▲' : '▼'}</span>
+                      </button>
                     </div>
                   </div>
 
-                  <div className="mt-3 max-h-36 space-y-2 overflow-auto pr-1">
-                    {services.map((service) => {
-                      const checked = newAppointmentForm.service_ids.includes(service.id);
-                      return (
-                        <label
-                          key={service.id}
-                          className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm ${
-                            checked
-                              ? 'border-amber-400 bg-amber-500/20 text-amber-100'
-                              : 'border-[#6f5262] bg-[#120b1c] text-[#f8e7d9]'
-                          }`}
-                        >
-                          <span>{service.name}</span>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleNewAppointmentService(service.id)}
-                            className="h-4 w-4 accent-[#f0c6bb]"
-                          />
-                        </label>
-                      );
-                    })}
-                  </div>
+                  {showNewAptTimeGrid && (
+                    <div className="mt-3 rounded-lg border border-[#8d6a52]/30 bg-[#0f0a17] p-3">
+                      <p className="mb-2 text-xs font-bold text-[#f7d9b2]">
+                        Chọn khung giờ - {formatDisplayDate(newAppointmentForm.appointment_date) || 'Chưa chọn ngày'}
+                      </p>
+                      {loadingSchedule ? (
+                        <p className="text-xs text-[#cbb9bb]">Đang tải...</p>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2">
+                          {getAvailableTimeSlots(newAppointmentForm.appointment_date).map((slot) => {
+                            const isBooked = bookedSlots.includes(slot);
+                            const isSelected = newAppointmentForm.appointment_time === slot;
+                            return (
+                              <button
+                                key={slot}
+                                type="button"
+                                disabled={isBooked}
+                                onClick={() => {
+                                  setNewAppointmentForm(prev => ({ ...prev, appointment_time: slot }));
+                                  setShowNewAptTimeGrid(false);
+                                }}
+                                className={`rounded px-2 py-2 text-center text-xs font-bold transition ${
+                                  isBooked
+                                    ? 'cursor-not-allowed bg-rose-500/20 text-rose-300 opacity-50'
+                                    : isSelected
+                                    ? 'bg-[#f0c6bb] text-[#2a1724]'
+                                    : 'bg-[#2a1d2f] text-[#f7d9b2] hover:bg-[#3a2d3f]'
+                                }`}
+                              >
+                                {slot}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <textarea
                     value={newAppointmentForm.notes}
@@ -2424,14 +3039,6 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                           {apt.status}
                         </span>
 
-                        {(apt.status === 'pending' || apt.status === 'confirmed' || apt.status === 'in-process') && (
-                          <button
-                            onClick={() => updateAppointmentStatus(apt.id, 'cancel')}
-                            className="rounded-lg border border-rose-400/60 bg-rose-500/20 px-4 py-2 text-xs font-bold uppercase tracking-wide text-rose-200 hover:bg-rose-500/30"
-                          >
-                            Hủy lịch
-                          </button>
-                        )}
                         <button
                           onClick={() => startEditAppointment(apt)}
                           className="rounded-lg border border-[#8d6a52] px-4 py-2 text-xs font-bold uppercase tracking-wide text-[#f3d5b8] hover:bg-[#2a1d2f]"
@@ -2452,16 +3059,6 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#d8a56c]">Cập nhật thông tin lịch hẹn</p>
 
                           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                            <select
-                              value={editAppointmentForm.staff_id}
-                              onChange={(e) => setEditAppointmentForm((prev) => ({ ...prev, staff_id: e.target.value }))}
-                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                            >
-                              <option value="">Chọn nhân viên</option>
-                              {staffs.map((staff) => (
-                                <option key={staff.id} value={staff.id}>{staff.name || staff.full_name || `Staff #${staff.id}`}</option>
-                              ))}
-                            </select>
 
                             <select
                               value={editAppointmentForm.status}
@@ -2473,50 +3070,185 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                               ))}
                             </select>
 
-                            <input
-                              type="date"
-                              value={editAppointmentForm.appointment_date}
-                              onChange={(e) => setEditAppointmentForm((prev) => ({ ...prev, appointment_date: e.target.value }))}
-                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                            />
-                            <input
-                              type="time"
-                              value={editAppointmentForm.appointment_time}
-                              onChange={(e) => setEditAppointmentForm((prev) => ({ ...prev, appointment_time: e.target.value }))}
-                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                            />
-                          </div>
+                            <div className="relative" ref={editAptServicePickerRef}>
+                              <button
+                                type="button"
+                                onClick={() => setIsEditAptServicePickerOpen((prev) => !prev)}
+                                className="w-full rounded-md border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-left text-sm text-white outline-none ring-[#d8a56c] hover:border-[#d8a56c] focus:ring"
+                              >
+                                <p className="text-xs font-semibold uppercase tracking-wide text-[#d8a56c]">Dịch vụ</p>
+                                <p className="mt-1 text-xs text-[#cbb9bb]">
+                                  {editAppointmentForm.service_ids.length > 0
+                                    ? services.filter(s => editAppointmentForm.service_ids.includes(s.id)).map(s => s.name).join(', ')
+                                    : 'Chọn dịch vụ'}
+                                </p>
+                              </button>
 
-                          <div className="mt-3 max-h-36 space-y-2 overflow-auto pr-1">
-                            {services.map((service) => {
-                              const checked = editAppointmentForm.service_ids.includes(service.id);
-                              return (
-                                <label
-                                  key={service.id}
-                                  className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm ${
-                                    checked
-                                      ? 'border-amber-400 bg-amber-500/20 text-amber-100'
-                                      : 'border-[#6f5262] bg-[#120b1c] text-[#f8e7d9]'
-                                  }`}
+                              {isEditAptServicePickerOpen && (
+                                <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border border-[#8d6a52] bg-[#1a0f27] p-3 shadow-xl">
+                                  <div className="max-h-48 space-y-2 overflow-auto pr-1">
+                                    {services.map((service) => {
+                                      const checked = editAppointmentForm.service_ids.includes(service.id);
+                                      return (
+                                        <label
+                                          key={service.id}
+                                          className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm transition ${
+                                            checked
+                                              ? 'border-amber-400 bg-amber-500/20 text-amber-100'
+                                              : 'border-[#6f5262] bg-[#120b1c] text-[#f8e7d9] hover:border-[#8d6a52]'
+                                          }`}
+                                        >
+                                          <span>{service.name}</span>
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => toggleEditAppointmentService(service.id)}
+                                            className="h-4 w-4 accent-[#f0c6bb]"
+                                          />
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsEditAptServicePickerOpen(false)}
+                                    className="mt-3 w-full rounded-md bg-[#f0c6bb] py-2 text-xs font-black uppercase text-[#2a1724]"
+                                  >
+                                    Xong
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="relative">
+                                <button
+                                  type="button"
+                                  onClick={() => setShowEditAptCalendar(!showEditAptCalendar)}
+                                  className="w-full rounded-md border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-left text-sm text-white outline-none ring-[#d8a56c] hover:border-[#d8a56c] focus:ring"
                                 >
-                                  <span>{service.name}</span>
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => toggleEditAppointmentService(service.id)}
-                                    className="h-4 w-4 accent-[#f0c6bb]"
-                                  />
-                                </label>
-                              );
-                            })}
+                                  📅 {formatDisplayDate(editAppointmentForm.appointment_date) || 'Chọn ngày'}
+                                </button>
+                                
+                                {showEditAptCalendar && (
+                                  <div className="absolute z-50 mt-1 w-64 rounded-lg border border-[#8d6a52] bg-[#1a0f27] p-3 shadow-xl left-0">
+                                    <div className="mb-3 flex items-center justify-between">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMonthChangeHelper(setEditAptCalendarMonth, editAptCalendarMonth, -1)}
+                                        className="rounded px-2 py-1 text-[#f7d9b2] hover:bg-[#2a1d2f]"
+                                      >
+                                        ‹
+                                      </button>
+                                      <div className="text-center text-xs font-bold text-[#f7d9b2]">
+                                        {editAptCalendarMonth.toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' })}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMonthChangeHelper(setEditAptCalendarMonth, editAptCalendarMonth, 1)}
+                                        className="rounded px-2 py-1 text-[#f7d9b2] hover:bg-[#2a1d2f]"
+                                      >
+                                        ›
+                                      </button>
+                                    </div>
+
+                                    <div className="mb-2 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-[#d8a56c]">
+                                      {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map(day => (
+                                        <div key={day}>{day}</div>
+                                      ))}
+                                    </div>
+
+                                    <div className="grid grid-cols-7 gap-1">
+                                      {calculateCalendarDays(editAptCalendarMonth).map((date, i) => {
+                                        let dateStr = null;
+                                        if (date) {
+                                          const year = date.getFullYear();
+                                          const month = String(date.getMonth() + 1).padStart(2, '0');
+                                          const day = String(date.getDate()).padStart(2, '0');
+                                          dateStr = `${year}-${month}-${day}`;
+                                        }
+                                        const isSelected = dateStr === editAppointmentForm.appointment_date;
+                                        
+                                        return (
+                                          <button
+                                            key={i}
+                                            type="button"
+                                            disabled={!date}
+                                            onClick={() => date && handleEditAptDateSelect(date)}
+                                            className={`rounded px-1 py-1 text-[10px] font-semibold ${
+                                              !date
+                                                ? 'text-[#6f5262]'
+                                                : isSelected
+                                                ? 'bg-[#f7d9b2] text-[#2a1724]'
+                                                : 'bg-[#2a1d2f] text-[#f7d9b2] hover:bg-[#3a2d3f]'
+                                            }`}
+                                          >
+                                            {date?.getDate()}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setShowEditAptTimeGrid(!showEditAptTimeGrid)}
+                                className="w-full rounded-md border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-left text-sm text-white outline-none ring-[#d8a56c] hover:border-[#d8a56c] focus:ring flex justify-between items-center"
+                              >
+                                <span>🕒 {editAppointmentForm.appointment_time || 'Giờ'}</span>
+                                <span className="text-[10px]">{showEditAptTimeGrid ? '▲' : '▼'}</span>
+                              </button>
+                            </div>
                           </div>
 
-                          <textarea
-                            value={editAppointmentForm.notes}
-                            onChange={(e) => setEditAppointmentForm((prev) => ({ ...prev, notes: e.target.value }))}
-                            placeholder="Ghi chú"
-                            className="mt-3 w-full rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                          />
+                          {showEditAptTimeGrid && (
+                            <div className="mt-3 rounded-lg border border-[#8d6a52]/30 bg-[#120b1c] p-3">
+                              <p className="mb-2 text-xs font-bold text-[#f7d9b2]">
+                                Chọn khung giờ - {formatDisplayDate(editAppointmentForm.appointment_date) || 'Chưa chọn ngày'}
+                              </p>
+                              {loadingSchedule ? (
+                                <p className="text-xs text-[#cbb9bb]">Đang tải...</p>
+                              ) : (
+                                <div className="grid grid-cols-3 gap-2">
+                                  {getAvailableTimeSlots(editAppointmentForm.appointment_date).map((slot) => {
+                                    const isBooked = bookedSlots.includes(slot);
+                                    const isSelected = editAppointmentForm.appointment_time === slot;
+                                    return (
+                                      <button
+                                        key={slot}
+                                        type="button"
+                                        disabled={isBooked}
+                                        onClick={() => {
+                                          setEditAppointmentForm(prev => ({ ...prev, appointment_time: slot }));
+                                          setShowEditAptTimeGrid(false);
+                                        }}
+                                        className={`rounded px-2 py-2 text-center text-xs font-bold transition ${
+                                          isBooked
+                                            ? 'cursor-not-allowed bg-rose-500/20 text-rose-300 opacity-50'
+                                            : isSelected
+                                            ? 'bg-[#f0c6bb] text-[#2a1724]'
+                                            : 'bg-[#2a1d2f] text-[#f7d9b2] hover:bg-[#3a2d3f]'
+                                        }`}
+                                      >
+                                        {slot}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="mt-3">
+                            <textarea
+                              value={editAppointmentForm.notes}
+                              onChange={(e) => setEditAppointmentForm((prev) => ({ ...prev, notes: e.target.value }))}
+                              placeholder="Ghi chú"
+                              className="w-full rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                            />
+                          </div>
 
                           <div className="mt-3 flex gap-2">
                             <button
@@ -2547,7 +3279,58 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                 {settingsLoading ? (
                   <p className="text-[#cbb9bb]">Đang tải cài đặt...</p>
                 ) : (
-                  <form onSubmit={updateSalonSettings} className="rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
+                  <>
+                    {/* Hero Image Upload Section */}
+                    <div className="mb-6 rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
+                      <h3 className="mb-4 text-lg font-black text-[#f7dfc2]">Tải lên ảnh Hero</h3>
+                      
+                      {salonSettings.hero_image?.url && (
+                        <div className="mb-4">
+                          <p className="mb-2 text-sm text-[#d7c4c6]">Ảnh hiện tại:</p>
+                          <img
+                            src={resolveHeroImage(salonSettings.hero_image.url)}
+                            alt="Current Hero"
+                            className="max-h-40 max-w-xs rounded-lg object-cover"
+                          />
+                        </div>
+                      )}
+
+                      <div className="w-full rounded-lg border border-dashed border-[#8d6a52]/40 bg-[#0f0a17] px-4 py-2 text-[#cbb9bb]">
+                        <input
+                          ref={heroFileInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/jpg,image/gif"
+                          onChange={uploadHeroImage}
+                          disabled={heroImageUploading}
+                          className="hidden"
+                          id="hero-image-input"
+                        />
+                        <label
+                          htmlFor="hero-image-input"
+                          className={`mr-4 inline-block rounded-md bg-[#d8a56c] px-3 py-2 font-semibold text-[#2a1724] ${heroImageUploading ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                        >
+                          Chọn tệp
+                        </label>
+                        <span className="text-[#cbb9bb]">{heroSelectedFileName}</span>
+                      </div>
+                      
+                      <p className="mt-2 text-xs text-[#99878e]">
+                        Chấp nhận: JPEG, PNG, GIF (Tối đa 5MB)
+                      </p>
+
+                      {heroImageMessage.text && (
+                        <p className={`mt-3 text-sm font-semibold ${heroImageMessage.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
+                          {heroImageMessage.text}
+                        </p>
+                      )}
+
+                      {heroImageUploading && (
+                        <p className="mt-3 text-sm text-[#d8a56c]">Đang tải lên...</p>
+                      )}
+                    </div>
+
+                    {/* Settings Form */}
+                    <form onSubmit={updateSalonSettings} className="rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
                     <div className="mb-6">
                       <label className="mb-2 block text-sm font-semibold text-[#f3d5b8]">Số điện thoại liên hệ</label>
                       <input
@@ -2612,7 +3395,183 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                       </p>
                     )}
                   </form>
+                  </>
                 )}
+              </div>
+            )}
+
+            {page === 'users' && (
+              <div>
+                <h2 className="mb-6 text-3xl font-black text-[#f7dfc2]">Quản lý người dùng</h2>
+
+                <form onSubmit={addUser} className="mb-8 rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
+                  <div className="mb-4 grid grid-cols-2 gap-4">
+                    <input
+                      type="text"
+                      placeholder="Họ tên"
+                      value={userForm.name}
+                      onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                      className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Tên đăng nhập"
+                      value={userForm.username}
+                      onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
+                      className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
+                    />
+                    <input
+                      type="email"
+                      placeholder="Email"
+                      value={userForm.email}
+                      onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                      className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Số điện thoại"
+                      value={userForm.phone}
+                      onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
+                      className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
+                    />
+                    <div className="relative">
+                      <input
+                        type={showUserPassword ? 'text' : 'password'}
+                        placeholder="Mật khẩu"
+                        value={userForm.password}
+                        onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                        className="w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowUserPassword(!showUserPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#99878e] hover:text-[#f0c6bb]"
+                        title={showUserPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                      >
+                        {showUserPassword ? '👁️' : '👁️‍🗨️'}
+                      </button>
+                    </div>
+                    <select
+                      value={userForm.role}
+                      onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+                      className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                    >
+                      <option value="customer">Khách hàng</option>
+                      <option value="admin">Quản trị viên</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="rounded-md bg-[#f0c6bb] px-5 py-2 font-black uppercase tracking-wide text-[#2a1724] hover:bg-[#ffd9cf]">
+                    Thêm người dùng
+                  </button>
+                  {userMessage.text && (
+                    <p className={`mt-3 text-sm font-semibold ${userMessage.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
+                      {userMessage.text}
+                    </p>
+                  )}
+                </form>
+
+                <div className="grid grid-cols-1 gap-4">
+                  {users.map((user) => (
+                    <div key={user.id} className="rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-xl font-black text-[#f7dfc2]">{user.name}</h3>
+                          <p className="text-sm text-[#c7b4b6]">@{user.username} | {user.email} | {user.phone || 'N/A'}</p>
+                          <p className="mt-1 text-xs font-bold uppercase tracking-wider text-[#d8a56c]">Vai trò: {user.role}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => startEditUser(user)}
+                            className="rounded-md bg-[#f0c6bb] px-4 py-2 text-xs font-bold uppercase tracking-wide text-[#2a1724] hover:bg-[#ffd9cf]"
+                          >
+                            Sửa
+                          </button>
+                          <button
+                            onClick={() => deleteUser(user.id)}
+                            className="rounded-md border border-rose-400/60 px-4 py-2 text-xs font-bold uppercase tracking-wide text-rose-200 hover:bg-rose-500/20"
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                      </div>
+
+                      {editingUserId === user.id && (
+                        <div className="mt-4 rounded-lg border border-[#6f5262] bg-[#0f0a17] p-4">
+                          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#d8a56c]">Cập nhật thông tin</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              type="text"
+                              value={editUserForm.name}
+                              onChange={(e) => setEditUserForm({ ...editUserForm, name: e.target.value })}
+                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                              placeholder="Họ tên"
+                            />
+                            <input
+                              type="text"
+                              value={editUserForm.username}
+                              onChange={(e) => setEditUserForm({ ...editUserForm, username: e.target.value })}
+                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                              placeholder="Tên đăng nhập"
+                            />
+                            <input
+                              type="email"
+                              value={editUserForm.email}
+                              onChange={(e) => setEditUserForm({ ...editUserForm, email: e.target.value })}
+                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                              placeholder="Email"
+                            />
+                            <input
+                              type="text"
+                              value={editUserForm.phone}
+                              onChange={(e) => setEditUserForm({ ...editUserForm, phone: e.target.value })}
+                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                              placeholder="Số điện thoại"
+                            />
+                            <div className="relative">
+                              <input
+                                type={showEditUserPassword ? 'text' : 'password'}
+                                value={editUserForm.password}
+                                onChange={(e) => setEditUserForm({ ...editUserForm, password: e.target.value })}
+                                className="w-full rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring pr-10"
+                                placeholder="Mật khẩu mới (bỏ trống nếu không đổi)"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowEditUserPassword(!showEditUserPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#99878e] hover:text-[#f0c6bb]"
+                                title={showEditUserPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                              >
+                                {showEditUserPassword ? '👁️' : '👁️‍🗨️'}
+                              </button>
+                            </div>
+                            <select
+                              value={editUserForm.role}
+                              onChange={(e) => setEditUserForm({ ...editUserForm, role: e.target.value })}
+                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                            >
+                              <option value="customer">Khách hàng</option>
+                              <option value="admin">Quản trị viên</option>
+                            </select>
+                          </div>
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              onClick={() => updateUser(user.id)}
+                              className="rounded-md bg-[#f0c6bb] px-4 py-2 text-xs font-bold uppercase tracking-wide text-[#2a1724] hover:bg-[#ffd9cf]"
+                            >
+                              Cập nhật
+                            </button>
+                            <button
+                              onClick={() => setEditingUserId(null)}
+                              className="rounded-md border border-[#8d6a52] px-4 py-2 text-xs font-bold uppercase tracking-wide text-[#f3d5b8] hover:bg-[#2a1d2f]"
+                            >
+                              Hủy
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </main>

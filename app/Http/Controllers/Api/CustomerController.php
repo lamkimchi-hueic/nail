@@ -31,6 +31,7 @@ class CustomerController extends Controller
                 $search = trim((string) $request->get('search'));
                 $query->where(function ($builder) use ($search) {
                     $builder->where('username', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
                         ->orWhere('phone', 'like', "%{$search}%");
                 });
             }
@@ -169,6 +170,7 @@ class CustomerController extends Controller
                 })
                 ->where(function ($builder) use ($query) {
                     $builder->where('username', 'like', "%{$query}%")
+                        ->orWhere('email', 'like', "%{$query}%")
                         ->orWhere('phone', 'like', "%{$query}%");
                 })
                 ->withCount('appointments')

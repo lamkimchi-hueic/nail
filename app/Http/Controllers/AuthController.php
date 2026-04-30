@@ -16,34 +16,41 @@ class AuthController extends Controller
         try {
             $validated = $request->validate([
                 'username' => 'required|string|max:50|unique:users',
+                'email' => 'required|string|email|max:255|unique:users',
                 'name' => 'nullable|string|max:100',
                 'phone' => 'nullable|string|max:20|unique:users',
                 'password' => 'required|string|min:8|confirmed',
-                'role' => 'required|in:admin'
+                'role' => 'required|in:admin,customer'
+            ], [
+                'username.unique' => 'Tên đăng nhập này đã có người sử dụng.',
+                'email.unique' => 'Email này đã được đăng ký tài khoản.',
+                'email.email' => 'Địa chỉ email không hợp lệ.',
+                'phone.unique' => 'Số điện thoại này đã được sử dụng.',
+                'password.min' => 'Mật khẩu phải có ít nhất 8 ký tự.',
+                'password.confirmed' => 'Xác nhận mật khẩu không khớp.',
+                'username.required' => 'Vui lòng nhập tên đăng nhập.',
+                'email.required' => 'Vui lòng nhập email.',
+                'password.required' => 'Vui lòng nhập mật khẩu.'
             ]);
 
-            if (($validated['role'] ?? null) !== 'admin') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Đăng ký chỉ dành cho tài khoản admin'
-                ], 403);
-            }
+            $role = $validated['role'];
 
             $user = User::create([
                 'username' => $validated['username'],
+                'email' => $validated['email'],
                 'name' => $validated['name'] ?? null,
                 'phone' => $validated['phone'] ?? null,
                 'password' => Hash::make($validated['password']),
-                'role' => 'admin'
+                'role' => $role
             ]);
 
-            // Sync admin role with all admin permissions
-            $user->syncRoles(['admin']);
+            // Sync role with appropriate permissions
+            $user->syncRoles([$role]);
 
-            // Ensure the admin role has all its permissions
-            $adminRole = \Spatie\Permission\Models\Role::where('name', 'admin')->first();
-            if ($adminRole) {
-                $user->syncPermissions($adminRole->permissions);
+            // Sync permissions based on role
+            $roleModel = \Spatie\Permission\Models\Role::where('name', $role)->first();
+            if ($roleModel) {
+                $user->syncPermissions($roleModel->permissions);
             }
 
             // Create Sanctum token
@@ -53,9 +60,11 @@ class AuthController extends Controller
             Auth::login($user);
             $request->session()->regenerate();
 
+            $message = $role === 'admin' ? 'Đăng ký admin thành công' : 'Đăng ký khách hàng thành công';
+
             return response()->json([
                 'success' => true,
-                'message' => 'Đăng ký thành công',
+                'message' => $message,
                 'data' => [
                     'user' => $user,
                     'token' => $token,
@@ -76,7 +85,7 @@ class AuthController extends Controller
         }
     }
 
-    // Login - Accepts username only
+    // Login - Accepts username or email
     public function login(Request $request)
     {
         try {
@@ -85,29 +94,34 @@ class AuthController extends Controller
                 'password' => 'required|string'
             ]);
 
-            // Find user by username
-            $user = User::where('username', $validated['username'])->first();
+            // Find user by username or email
+            $user = User::where('username', $validated['username'])
+                        ->orWhere('email', $validated['username'])
+                        ->first();
 
             if (!$user || !Hash::check($validated['password'], $user->password)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Username hoặc mật khẩu không chính xác'
+                    'message' => 'Username/Email hoặc mật khẩu không chính xác'
                 ], 401);
             }
 
-            if ($user->role !== 'admin') {
+            // Allow both admin and customer roles
+            $role = $user->role;
+            if (!in_array($role, ['admin', 'customer'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Đăng nhập chỉ dành cho tài khoản admin'
+                    'message' => 'Vai trò người dùng không hợp lệ'
                 ], 403);
             }
 
-            $user->syncRoles(['admin']);
+            // Sync role with appropriate permissions
+            $user->syncRoles([$role]);
 
-            // Ensure the admin role has all its permissions
-            $adminRole = \Spatie\Permission\Models\Role::where('name', 'admin')->first();
-            if ($adminRole) {
-                $user->syncPermissions($adminRole->permissions);
+            // Sync permissions based on role
+            $roleModel = \Spatie\Permission\Models\Role::where('name', $role)->first();
+            if ($roleModel) {
+                $user->syncPermissions($roleModel->permissions);
             }
 
             // Create Sanctum token
@@ -158,6 +172,7 @@ class AuthController extends Controller
                 'data' => [
                     'id' => $user->id,
                     'username' => $user->username,
+                    'email' => $user->email,
                     'phone' => $user->phone,
                     'role' => $user->role,
                     'roles' => $user->getRoleNames(),

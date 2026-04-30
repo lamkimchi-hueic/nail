@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 export default function Appointments({ token, userId }) {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [cancelId, setCancelId] = useState(null);
 
   useEffect(() => {
     fetchAppointments();
@@ -25,28 +24,6 @@ export default function Appointments({ token, userId }) {
       console.error('Error fetching appointments:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleCancel = async (id) => {
-    if (!window.confirm('Bạn chắc chắn muốn hủy lịch hẹn này?')) return;
-
-    try {
-      const response = await fetch(`http://localhost:8000/api/appointments/${id}/cancel`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        setAppointments(appointments.filter(a => a.id !== id));
-        alert('Hủy lịch hẹn thành công');
-      }
-    } catch (error) {
-      console.error('Error canceling appointment:', error);
-      alert('Lỗi khi hủy lịch hẹn');
     }
   };
 
@@ -92,14 +69,6 @@ export default function Appointments({ token, userId }) {
                 </div>
               </div>
 
-              {appointment.status !== 'completed' && appointment.status !== 'cancelled' && (
-                <button
-                  onClick={() => handleCancel(appointment.id)}
-                  className="w-full bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 transition"
-                >
-                  Hủy lịch hẹn
-                </button>
-              )}
             </div>
           ))}
         </div>
