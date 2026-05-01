@@ -15,14 +15,22 @@ class SalonSettingController extends Controller
     private function loadPersistedSettings(): array
     {
         $settings = SalonSetting::query()->pluck('value', 'key')->toArray();
-
         $normalized = [];
 
         foreach ($settings as $key => $value) {
-            if (in_array($key, ['working_hours', 'hero_image'], true) && is_string($value)) {
+            if (in_array($key, ['working_hours', 'gallery_images'], true) && is_string($value)) {
                 $decoded = json_decode($value, true);
                 $normalized[$key] = json_last_error() === JSON_ERROR_NONE ? $decoded : $value;
                 continue;
+            }
+
+            // Special handling for old hero_image format if it was JSON
+            if ($key === 'hero_image' && is_string($value) && str_starts_with($value, '{')) {
+                $decoded = json_decode($value, true);
+                if (json_last_error() === JSON_ERROR_NONE && isset($decoded['url'])) {
+                    $normalized[$key] = $decoded['url'];
+                    continue;
+                }
             }
 
             $normalized[$key] = $value;
@@ -31,12 +39,28 @@ class SalonSettingController extends Controller
         return $normalized;
     }
 
-    private function buildSettings(array $baseSettings): array
+    private function buildSettings(array $extraDefaults = []): array
     {
-        $persistedSettings = $this->loadPersistedSettings();
-        $cachedSettings = Cache::get(self::CACHE_KEY, []);
+        $defaults = array_merge([
+            'salon_name' => config('salon.name', 'Luxury Nails Spa'),
+            'salon_address' => config('salon.address', ''),
+            'salon_phone' => config('salon.phone', '0900 123 456'),
+            'salon_email' => config('salon.email', ''),
+            'working_hours' => config('salon.working_hours', []),
+            'slot_duration' => config('salon.appointment.slot_duration', 30),
+            'max_advance_days' => config('salon.appointment.max_advance_days', 30),
+            'min_advance_hours' => config('salon.appointment.min_advance_hours', 1),
+            'max_concurrent_appointments' => config('salon.staff.max_concurrent_appointments', 1),
+            'cancellation_hours' => config('salon.appointment.cancellation_hours', 24),
+            'hero_image' => '',
+            'logo' => '',
+            'gallery_images' => [],
+        ], $extraDefaults);
 
-        return array_merge($baseSettings, $persistedSettings, $cachedSettings);
+        $persisted = $this->loadPersistedSettings();
+        $cached = Cache::get(self::CACHE_KEY, []);
+
+        return array_merge($defaults, $persisted, $cached);
     }
 
     private function persistSettings(array $settings): void
@@ -53,31 +77,10 @@ class SalonSettingController extends Controller
         }
     }
 
-    /**
-     * Get public salon settings
-     */
     public function publicSettings()
     {
         try {
-            // Get persisted settings from database directly (bypass cache)
-            $persistedSettings = $this->loadPersistedSettings();
-
-            // Build base settings with defaults
-            $baseSettings = [
-                'salon_name' => config('salon.name', 'Nail Salon Pro'),
-                'salon_address' => config('salon.address', ''),
-                'salon_phone' => config('salon.phone', ''),
-                'salon_email' => config('salon.email', ''),
-                'working_hours' => config('salon.working_hours', []),
-                'slot_duration' => config('salon.appointment.slot_duration', 30),
-                'max_advance_days' => config('salon.appointment.max_advance_days', 30),
-                'min_advance_hours' => config('salon.appointment.min_advance_hours', 1),
-                'hero_image' => null,
-            ];
-
-            // Merge: base → persisted (persisted overrides base)
-            $settings = array_merge($baseSettings, $persistedSettings);
-
+            $settings = $this->buildSettings();
             return response()->json([
                 'success' => true,
                 'data' => $settings
@@ -91,33 +94,15 @@ class SalonSettingController extends Controller
         }
     }
 
-    /**
-     * Get all settings (Admin only)
-     */
     public function index()
     {
+        $user = auth('web')->user() ?: auth('sanctum')->user();
+        if (!$user) {
+             return response()->json(['success' => false, 'message' => 'Lỗi xác thực: Vui lòng đăng nhập lại.'], 401);
+        }
+
         try {
-            // Load persisted settings from database directly
-            $persistedSettings = $this->loadPersistedSettings();
-
-            // Base settings from config
-            $baseSettings = [
-                'salon_name' => config('salon.name', 'Nail Salon Pro'),
-                'salon_address' => config('salon.address', ''),
-                'salon_phone' => config('salon.phone', ''),
-                'salon_email' => config('salon.email', ''),
-                'working_hours' => config('salon.working_hours', []),
-                'slot_duration' => config('salon.appointment.slot_duration', 30),
-                'max_concurrent_appointments' => config('salon.staff.max_concurrent_appointments', 1),
-                'max_advance_days' => config('salon.appointment.max_advance_days', 30),
-                'min_advance_hours' => config('salon.appointment.min_advance_hours', 1),
-                'cancellation_hours' => config('salon.appointment.cancellation_hours', 24),
-                'hero_image' => null,
-            ];
-
-            // Merge: base settings -> persisted settings (persisted overrides)
-            $settings = array_merge($baseSettings, $persistedSettings);
-
+            $settings = $this->buildSettings();
             return response()->json([
                 'success' => true,
                 'data' => $settings
@@ -131,11 +116,17 @@ class SalonSettingController extends Controller
         }
     }
 
-    /**
-     * Update settings (Admin only)
-     */
     public function update(Request $request)
     {
+        $user = auth('web')->user() ?: auth('sanctum')->user();
+        if (!$user) {
+             return response()->json(['success' => false, 'message' => 'Lỗi xác thực: Vui lòng đăng nhập lại.'], 401);
+        }
+
+        if (!$user->hasPermissionTo('edit_settings')) {
+             return response()->json(['success' => false, 'message' => 'Bạn không có quyền thực hiện hành động này.'], 403);
+        }
+
         try {
             $validated = $request->validate([
                 'salon_name' => 'nullable|string|max:255',
@@ -150,34 +141,20 @@ class SalonSettingController extends Controller
                 'cancellation_hours' => 'nullable|integer|min:0|max:168'
             ]);
 
-            // Filter out null values
             $updateData = array_filter($validated, fn ($value) => $value !== null);
 
             if (!empty($updateData)) {
                 $this->persistSettings($updateData);
-
-                // Clear cache to force reload of persisted settings
-                Cache::forget(self::CACHE_KEY);
+                
+                // Refresh all settings for cache
+                $allSettings = $this->loadPersistedSettings();
+                Cache::put(self::CACHE_KEY, $allSettings, self::CACHE_DURATION);
             }
-
-            // Return full updated settings by rebuilding them
-            $updatedSettings = $this->buildSettings([
-                'salon_name' => config('salon.name', 'Nail Salon Pro'),
-                'salon_address' => config('salon.address', ''),
-                'salon_phone' => config('salon.phone', ''),
-                'salon_email' => config('salon.email', ''),
-                'working_hours' => config('salon.working_hours', []),
-                'slot_duration' => config('salon.appointment.slot_duration', 30),
-                'max_concurrent_appointments' => config('salon.staff.max_concurrent_appointments', 1),
-                'max_advance_days' => config('salon.appointment.max_advance_days', 30),
-                'min_advance_hours' => config('salon.appointment.min_advance_hours', 1),
-                'cancellation_hours' => config('salon.appointment.cancellation_hours', 24),
-            ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Cài đặt được cập nhật thành công',
-                'data' => $updatedSettings
+                'data' => $this->buildSettings()
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -188,58 +165,116 @@ class SalonSettingController extends Controller
         }
     }
 
-    /**
-     * Upload hero image (Admin only)
-     */
-    public function uploadHeroImage(Request $request)
+    public function uploadImage(Request $request)
     {
+        $user = auth('web')->user() ?: auth('sanctum')->user();
+        if (!$user) {
+             return response()->json(['success' => false, 'message' => 'Lỗi xác thực: Vui lòng đăng nhập lại.'], 401);
+        }
+
+        if (!$user->hasPermissionTo('edit_settings')) {
+             return response()->json(['success' => false, 'message' => 'Bạn không có quyền thực hiện hành động này.'], 403);
+        }
+
         try {
             $request->validate([
-                'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120' // 5MB
+                'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+                'type' => 'required|string|in:hero_image,logo,gallery'
             ]);
 
-            // Delete old image if exists
-            $oldSetting = SalonSetting::where('key', 'hero_image')->first();
-            if ($oldSetting && $oldSetting->value) {
-                $oldValue = $oldSetting->value;
-                $oldPath = is_array($oldValue) ? ($oldValue['path'] ?? null) : null;
+            $type = $request->input('type');
+            $file = $request->file('image');
 
-                if (!$oldPath && is_string($oldValue)) {
-                    $decodedOldValue = json_decode($oldValue, true);
-                    if (json_last_error() === JSON_ERROR_NONE && is_array($decodedOldValue)) {
-                        $oldPath = $decodedOldValue['path'] ?? null;
-                    }
-                }
+            $filename = $type . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $path = $file->storeAs('salon-images', $filename, 'public');
 
-                if ($oldPath) {
-                    Storage::disk('public')->delete($oldPath);
-                }
+            if (!$path) {
+                throw new \Exception("Không thể lưu file vào đĩa.");
             }
 
-            // Store new image
-            $path = $request->file('image')->store('hero', 'public');
+            $imageUrl = '/storage/' . $path;
+            $persisted = $this->loadPersistedSettings();
 
-            // Save to database
-            SalonSetting::updateOrCreate(
-                ['key' => 'hero_image'],
-                ['value' => json_encode(['path' => $path, 'url' => Storage::url($path)])]
-            );
+            if ($type === 'gallery') {
+                $gallery = $persisted['gallery_images'] ?? [];
+                $gallery[] = $imageUrl;
+                $persisted['gallery_images'] = $gallery;
+            } else {
+                if (isset($persisted[$type])) {
+                    $oldPath = str_replace('/storage/', '', $persisted[$type]);
+                    if (Storage::disk('public')->exists($oldPath)) {
+                        Storage::disk('public')->delete($oldPath);
+                    }
+                }
+                $persisted[$type] = $imageUrl;
+            }
 
-            // Clear cache
-            Cache::forget(self::CACHE_KEY);
+            $this->persistSettings($persisted);
+            Cache::put(self::CACHE_KEY, $persisted, self::CACHE_DURATION);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Ảnh hero được tải lên thành công',
+                'message' => 'Tải ảnh lên thành công',
                 'data' => [
-                    'path' => $path,
-                    'url' => Storage::url($path)
+                    'url' => $imageUrl,
+                    'type' => $type
                 ]
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Lỗi khi tải ảnh hero',
+                'message' => 'Lỗi khi tải ảnh lên',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function deleteImage(Request $request)
+    {
+        $user = auth('web')->user() ?: auth('sanctum')->user();
+        if (!$user) {
+             return response()->json(['success' => false, 'message' => 'Lỗi xác thực: Vui lòng đăng nhập lại.'], 401);
+        }
+
+        if (!$user->hasPermissionTo('edit_settings')) {
+             return response()->json(['success' => false, 'message' => 'Bạn không có quyền thực hiện hành động này.'], 403);
+        }
+
+        try {
+            $request->validate([
+                'url' => 'required|string',
+                'type' => 'required|string|in:hero_image,logo,gallery'
+            ]);
+
+            $type = $request->input('type');
+            $url = $request->input('url');
+            $path = str_replace('/storage/', '', $url);
+
+            if (Storage::disk('public')->exists($path)) {
+                Storage::disk('public')->delete($path);
+            }
+
+            $persisted = $this->loadPersistedSettings();
+
+            if ($type === 'gallery') {
+                $gallery = $persisted['gallery_images'] ?? [];
+                $gallery = array_values(array_filter($gallery, fn($img) => $img !== $url));
+                $persisted['gallery_images'] = $gallery;
+            } else {
+                unset($persisted[$type]);
+            }
+
+            $this->persistSettings($persisted);
+            Cache::put(self::CACHE_KEY, $persisted, self::CACHE_DURATION);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Xóa ảnh thành công'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi khi xóa ảnh',
                 'error' => $e->getMessage()
             ], 500);
         }

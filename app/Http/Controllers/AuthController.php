@@ -20,7 +20,7 @@ class AuthController extends Controller
                 'name' => 'nullable|string|max:100',
                 'phone' => 'nullable|string|max:20|unique:users',
                 'password' => 'required|string|min:8|confirmed',
-                'role' => 'required|in:admin,customer'
+                'role' => 'nullable|in:admin,customer'
             ], [
                 'username.unique' => 'Tên đăng nhập này đã có người sử dụng.',
                 'email.unique' => 'Email này đã được đăng ký tài khoản.',
@@ -33,7 +33,7 @@ class AuthController extends Controller
                 'password.required' => 'Vui lòng nhập mật khẩu.'
             ]);
 
-            $role = $validated['role'];
+            $role = $validated['role'] ?? 'customer';
 
             $user = User::create([
                 'username' => $validated['username'],
@@ -171,6 +171,7 @@ class AuthController extends Controller
                 'success' => true,
                 'data' => [
                     'id' => $user->id,
+                    'name' => $user->name,
                     'username' => $user->username,
                     'email' => $user->email,
                     'phone' => $user->phone,

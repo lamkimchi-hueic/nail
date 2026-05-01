@@ -4,6 +4,7 @@ import AdminNavbar from '../components/AdminNavbar';
 import AdminHome from '../components/AdminHome';
 import AdminServices from '../components/AdminServices';
 import AdminAppointments from '../components/AdminAppointments';
+import AdminSettings from '../components/AdminSettings';
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('home');
@@ -17,6 +18,7 @@ export default function AdminDashboard() {
         {activeTab === 'home' && <AdminHome />}
         {activeTab === 'services' && <AdminServices />}
         {activeTab === 'appointments' && <AdminAppointments />}
+        {activeTab === 'settings' && <AdminSettings />}
       </div>
     </div>
   );

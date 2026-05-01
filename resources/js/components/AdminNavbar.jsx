@@ -9,6 +9,13 @@ export default function AdminNavbar({ activeTab, setActiveTab }) {
     navigate('/login');
   };
 
+  const tabs = [
+    { id: 'home', label: '🏠 Trang chủ' },
+    { id: 'services', label: '💬 Dịch vụ' },
+    { id: 'appointments', label: '📅 Lịch hẹn' },
+    { id: 'settings', label: '⚙️ Cài đặt' },
+  ];
+
   return (
     <nav className="bg-gray-900 text-white shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -20,30 +27,17 @@ export default function AdminNavbar({ activeTab, setActiveTab }) {
             </div>
 
             <div className="hidden md:flex space-x-4">
-              <button
-                onClick={() => setActiveTab('home')}
-                className={`px-4 py-2 rounded-lg transition ${
-                  activeTab === 'home' ? 'bg-pink-600' : 'hover:bg-gray-800'
-                }`}
-              >
-                🏠 Trang chủ
-              </button>
-              <button
-                onClick={() => setActiveTab('services')}
-                className={`px-4 py-2 rounded-lg transition ${
-                  activeTab === 'services' ? 'bg-pink-600' : 'hover:bg-gray-800'
-                }`}
-              >
-                💬 Dịch vụ
-              </button>
-              <button
-                onClick={() => setActiveTab('appointments')}
-                className={`px-4 py-2 rounded-lg transition ${
-                  activeTab === 'appointments' ? 'bg-pink-600' : 'hover:bg-gray-800'
-                }`}
-              >
-                📅 Lịch hẹn
-              </button>
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-2 rounded-lg transition ${
+                    activeTab === tab.id ? 'bg-pink-600' : 'hover:bg-gray-800'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
           </div>
 

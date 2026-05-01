@@ -239,12 +239,13 @@ class AppointmentController extends Controller
     {
         try {
             $validated = $request->validate([
+                'phone' => 'nullable|string|max:20',
+                'name' => 'nullable|string|max:255',
                 'appointment_date' => 'required|date|after:now',
-                'staff_id' => 'required|exists:staffs,id',
+                'staff_id' => 'nullable|exists:staffs,id',
                 'services' => 'required|array|min:1',
                 'services.*' => 'exists:services,id',
                 'notes' => 'nullable|string',
-                'phone' => 'nullable|string|max:20'
             ]);
 
             $appointmentDateTime = Carbon::parse($validated['appointment_date'], config('app.timezone'));
@@ -256,14 +257,16 @@ class AppointmentController extends Controller
                 ], 422);
             }
 
-            if ($this->isTimeSlotBooked((int) $validated['staff_id'], $appointmentDateTime)) {
+            $staffId = $validated['staff_id'] ?? \App\Models\Staff::first()?->id ?? 1;
+
+            if ($this->isTimeSlotBooked((int) $staffId, $appointmentDateTime)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Khung giờ này đã có lịch, vui lòng chọn giờ khác.',
                 ], 409);
             }
 
-            $appointment = DB::transaction(function () use ($validated, $appointmentDateTime) {
+            $appointment = DB::transaction(function () use ($validated, $appointmentDateTime, $staffId) {
                 $user = Auth::user();
 
                 if (!$user) {
@@ -276,6 +279,12 @@ class AppointmentController extends Controller
                     $user->save();
                 }
 
+                // Update name if provided and not already set
+                if (!empty($validated['name']) && empty($user->name)) {
+                    $user->name = $validated['name'];
+                    $user->save();
+                }
+
                 // Calculate total price
                 $services = \App\Models\Service::whereIn('id', $validated['services'])->get();
                 $totalPrice = $services->sum('price');
@@ -283,7 +292,7 @@ class AppointmentController extends Controller
                 // Create appointment
                 $appointment = Appointment::create([
                     'user_id' => $user->id,
-                    'staff_id' => $validated['staff_id'],
+                    'staff_id' => $staffId,
                     'appointment_date' => $appointmentDateTime,
                     'total_price' => $totalPrice,
                     'status' => 'pending',
@@ -343,14 +352,16 @@ class AppointmentController extends Controller
 
             $appointmentDateTime = Carbon::parse($validated['appointment_date']);
 
-            if ($this->isTimeSlotBooked((int) $validated['staff_id'], $appointmentDateTime)) {
+            $staffId = $validated['staff_id'] ?? \App\Models\Staff::first()?->id ?? 1;
+
+            if ($this->isTimeSlotBooked((int) $staffId, $appointmentDateTime)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Khung giờ này đã có lịch, vui lòng chọn giờ khác.',
                 ], 409);
             }
 
-            $appointment = DB::transaction(function () use ($validated, $appointmentDateTime) {
+            $appointment = DB::transaction(function () use ($validated, $appointmentDateTime, $staffId) {
                 // Get or create user
                 if (!isset($validated['user_id'])) {
                     $normalizedPhone = $this->normalizePhone($validated['phone']);
@@ -373,7 +384,7 @@ class AppointmentController extends Controller
                 // Create appointment
                 $appointment = Appointment::create([
                     'user_id' => $user->id,
-                    'staff_id' => $validated['staff_id'],
+                    'staff_id' => $staffId,
                     'appointment_date' => $appointmentDateTime,
                     'total_price' => $totalPrice,
                     'status' => 'confirmed',
@@ -404,6 +415,7 @@ class AppointmentController extends Controller
                 'message' => 'Bạn không có quyền tạo lịch hẹn thủ công'
             ], 403);
         } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Create Manual Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Lỗi khi tạo lịch hẹn',
@@ -420,7 +432,9 @@ class AppointmentController extends Controller
 
             $validated = $request->validate([
                 'user_id' => 'nullable|exists:users,id',
-                'appointment_date' => 'nullable|date|after:now',
+                'name' => 'nullable|string|max:255',
+                'phone' => 'nullable|string|max:255',
+                'appointment_date' => 'nullable|date',
                 'staff_id' => 'nullable|exists:staffs,id',
                 'services' => 'nullable|array|min:1',
                 'services.*' => 'exists:services,id',
@@ -450,6 +464,14 @@ class AppointmentController extends Controller
             }
 
             DB::transaction(function () use ($validated, $appointment, $targetStaffId, $targetDateTime) {
+                // Update associated user if name or phone provided
+                if ($appointment->user && (isset($validated['name']) || isset($validated['phone']))) {
+                    $userData = [];
+                    if (isset($validated['name'])) $userData['name'] = $validated['name'];
+                    if (isset($validated['phone'])) $userData['phone'] = $this->normalizePhone($validated['phone']);
+                    $appointment->user->update($userData);
+                }
+
                 $updateData = [
                     'staff_id' => $targetStaffId,
                     'appointment_date' => $targetDateTime,

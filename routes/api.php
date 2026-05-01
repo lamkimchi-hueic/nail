@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\OAuthController;
 use App\Http\Controllers\AdminUserController;
+use App\Http\Controllers\UserController;
 
 // OAuth routes
 Route::get('/auth/google', [OAuthController::class, 'redirectToGoogle'])->name('google.redirect');
@@ -19,15 +20,18 @@ Route::post('/auth/google/complete', [OAuthController::class, 'completeRegistrat
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::get('/login', function () {
+    return response()->json(['message' => 'Unauthenticated.'], 401);
+})->name('login');
 
 // Unauthenticated public routes
 Route::get('/services', [ServiceController::class, 'index']);
 Route::get('/services/{id}', [ServiceController::class, 'show']);
-Route::get('/salon-settings', [SalonSettingController::class, 'publicSettings']);
+Route::get('/salon-settings/public', [SalonSettingController::class, 'publicSettings']);
 Route::get('/staffs', [StaffController::class, 'index']);
 Route::get('/staffs/{id}', [StaffController::class, 'show']);
 
-// Customer booking routes (view availability)
+// Customer booking routes (public info)
 Route::get('/appointments/schedule', [AppointmentController::class, 'publicSchedule']);
 
 // Get available slots for a staff (public)
@@ -39,11 +43,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
 
-    // Customer - Authenticated routes
+    // Customer - Appointments
+    Route::post('/appointments', [AppointmentController::class, 'store']);
     Route::get('/my-appointments', [AppointmentController::class, 'myAppointments']);
     Route::put('/my-appointments/{id}', [AppointmentController::class, 'updateMyAppointment']);
     Route::delete('/my-appointments/{id}', [AppointmentController::class, 'deleteMyAppointment']);
-    Route::post('/appointments', [AppointmentController::class, 'store']);
 
     // Admin - Services management
     Route::middleware(['role:admin'])->group(function () {
@@ -79,19 +83,24 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/customers/search/{query}', [CustomerController::class, 'search']);
     });
 
-    // Admin - Salon settings management
-    Route::middleware(['role:admin', 'permission:edit_settings'])->group(function () {
-        Route::get('/admin/salon-settings', [SalonSettingController::class, 'index']);
-        Route::put('/salon-settings', [SalonSettingController::class, 'update']);
-        Route::post('/salon-settings/upload-hero', [SalonSettingController::class, 'uploadHeroImage']);
-    });
-
     // Admin - User management
     Route::middleware(['role:admin'])->group(function () {
+        // Keeping both AdminUserController and UserController as they might serve different purposes or be in transition
         Route::get('/admin/users', [AdminUserController::class, 'index']);
         Route::post('/admin/users', [AdminUserController::class, 'store']);
         Route::put('/admin/users/{id}', [AdminUserController::class, 'update']);
         Route::delete('/admin/users/{id}', [AdminUserController::class, 'destroy']);
+        
+        Route::get('/users', [UserController::class, 'index']);
+        Route::post('/users', [UserController::class, 'store']);
+        Route::put('/users/{id}', [UserController::class, 'update']);
+        Route::delete('/users/{id}', [UserController::class, 'destroy']);
+        Route::get('/roles', [UserController::class, 'roles']);
     });
-
 });
+
+// Admin - Salon settings management
+Route::get('/salon-settings', [SalonSettingController::class, 'index']);
+Route::put('/salon-settings', [SalonSettingController::class, 'update']);
+Route::post('/salon-settings/upload-image', [SalonSettingController::class, 'uploadImage']);
+Route::delete('/salon-settings/delete-image', [SalonSettingController::class, 'deleteImage']);
