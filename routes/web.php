@@ -6,6 +6,6 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-Route::get('/{any}', function () {
-    return view('welcome');
-})->where('any', '^(?!api).*$');
+// Route::get('/{any}', function () {
+//     return view('welcome');
+// })->where('any', '^(?!api).*$');
