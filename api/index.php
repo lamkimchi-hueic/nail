@@ -5,6 +5,10 @@ if (is_file(__DIR__ . '/../public' . $_SERVER['REQUEST_URI'])) {
     return false;
 }
 
+// Force HTTPS vì Vercel terminate SSL ở edge, PHP không biết request đến qua HTTPS
+$_SERVER['HTTPS'] = 'on';
+$_SERVER['SERVER_PORT'] = 443;
+
 // Cấu hình cho Vercel (môi trường read-only, chỉ /tmp cho phép ghi)
 // Dùng putenv() để Laravel đọc được qua env()
 putenv('APP_ENV=production');
