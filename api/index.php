@@ -9,6 +9,7 @@ if (is_file(__DIR__ . '/../public' . $_SERVER['REQUEST_URI'])) {
 // Dùng putenv() để Laravel đọc được qua env()
 putenv('APP_ENV=production');
 putenv('APP_DEBUG=false');
+putenv('APP_URL=https://nail-amber.vercel.app');
 putenv('VIEW_COMPILED_PATH=/tmp/views');
 putenv('APP_CONFIG_CACHE=/tmp/config.php');
 putenv('APP_ROUTES_CACHE=/tmp/routes.php');

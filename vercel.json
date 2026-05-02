@@ -29,6 +29,7 @@
     "env": {
         "APP_ENV": "production",
         "APP_DEBUG": "false",
+        "APP_URL": "https://nail-amber.vercel.app",
         "APP_CONFIG_CACHE": "/tmp/config.php",
         "APP_ROUTES_CACHE": "/tmp/routes.php",
         "VIEW_COMPILED_PATH": "/tmp/views",
