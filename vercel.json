@@ -22,7 +22,7 @@
             "dest": "/public/favicon.ico"
         },
         {
-            "src": "/api/(.*)",
+            "src": "/backend/(.*)",
             "dest": "/public_api/index.php"
         },
         {
