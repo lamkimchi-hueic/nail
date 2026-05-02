@@ -40,5 +40,6 @@ $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
 
 // QUAN TRỌNG: Ép Laravel sử dụng đúng URI từ SERVER
 $request = Illuminate\Http\Request::capture();
-echo "PATH: " . $request->path();
-die();
+$response = $kernel->handle($request);
+$response->send();
+$kernel->terminate($request, $response);
