@@ -30,14 +30,16 @@ putenv('LOG_CHANNEL=stderr');
 putenv('SESSION_DRIVER=cookie');
 putenv('CACHE_STORE=array');
 
-// Database config (Neon PostgreSQL)
+// Database config (Neon PostgreSQL) - Use DATABASE_URL for proper SNI endpoint routing
+$dbHost = $_ENV['DB_HOST'] ?? 'ep-lucky-lab-ao7l82u0-pooler.c-2.ap-southeast-1.aws.neon.tech';
+$dbName = $_ENV['DB_DATABASE'] ?? 'neondb';
+$dbUser = $_ENV['DB_USERNAME'] ?? 'neondb_owner';
+$dbPass = $_ENV['DB_PASSWORD'] ?? 'npg_wRQ1KaiEjSm6';
+$dbEndpoint = $_ENV['DB_NEON_ENDPOINT'] ?? 'ep-lucky-lab-ao7l82u0';
+
+$databaseUrl = "postgresql://{$dbUser}:{$dbPass}@{$dbHost}:5432/{$dbName}?sslmode=require&options=endpoint%3D{$dbEndpoint}";
+putenv('DATABASE_URL=' . $databaseUrl);
 putenv('DB_CONNECTION=pgsql');
-putenv('DB_HOST=' . ($_ENV['DB_HOST'] ?? 'ep-lucky-lab-ao7l82u0-pooler.c-2.ap-southeast-1.aws.neon.tech'));
-putenv('DB_PORT=' . ($_ENV['DB_PORT'] ?? '5432'));
-putenv('DB_DATABASE=' . ($_ENV['DB_DATABASE'] ?? 'neondb'));
-putenv('DB_USERNAME=' . ($_ENV['DB_USERNAME'] ?? 'neondb_owner'));
-putenv('DB_PASSWORD=' . ($_ENV['DB_PASSWORD'] ?? 'npg_wRQ1KaiEjSm6'));
-putenv('DB_NEON_ENDPOINT=' . ($_ENV['DB_NEON_ENDPOINT'] ?? 'ep-lucky-lab-ao7l82u0'));
 
 // Auth config
 putenv('SANCTUM_STATEFUL_DOMAINS=' . ($_ENV['SANCTUM_STATEFUL_DOMAINS'] ?? 'nail-amber.vercel.app'));

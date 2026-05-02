@@ -86,12 +86,10 @@ return [
 
         'pgsql' => [
             'driver' => 'pgsql',
-            // 'url' => env('DATABASE_URL'),
+            'url' => env('DATABASE_URL'),
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '5432'),
-            'database' => env('DB_NEON_ENDPOINT')
-                ? env('DB_DATABASE', 'neondb') . ' options=endpoint=' . env('DB_NEON_ENDPOINT')
-                : env('DB_DATABASE', 'neondb'),
+            'database' => env('DB_DATABASE', 'neondb'),
             'username' => env('DB_USERNAME', 'neondb_owner'),
             'password' => env('DB_PASSWORD', ''),
             'charset' => 'utf8',
