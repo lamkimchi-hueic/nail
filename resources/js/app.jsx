@@ -191,7 +191,7 @@ function App() {
     const fetchUser = async () => {
       try {
         const authToken = localStorage.getItem('auth_token');
-        const res = await fetch(`${API_BASE_URL}/backend/user`, {
+        const res = await fetch(`${API_BASE_URL}/api/user`, {
           credentials: 'include',
           headers: {
             Accept: 'application/json',
@@ -323,7 +323,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
   const fetchMyAppointments = async () => {
     setLoadingAppointments(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/my-appointments`, {
+      const res = await fetch(`${API_BASE_URL}/api/my-appointments`, {
         credentials: 'include',
         headers: { 
           'Accept': 'application/json',
@@ -365,7 +365,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
     const loadServices = async () => {
       setLoadingServices(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/backend/services`, {
+        const res = await fetch(`${API_BASE_URL}/api/services`, {
           headers: { 
             'Accept': 'application/json',
             'X-XSRF-TOKEN': decodeURIComponent(getCookie('XSRF-TOKEN') || '')
@@ -387,7 +387,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
   useEffect(() => {
     const loadStaffs = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/backend/staffs`, {
+        const res = await fetch(`${API_BASE_URL}/api/staffs`, {
           headers: { 
             'Accept': 'application/json',
             'X-XSRF-TOKEN': decodeURIComponent(getCookie('XSRF-TOKEN') || '')
@@ -404,7 +404,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
   useEffect(() => {
     const loadSalonSettings = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/backend/salon-settings/public`, {
+        const res = await fetch(`${API_BASE_URL}/api/salon-settings/public`, {
           headers: { 
             'Accept': 'application/json',
             'X-XSRF-TOKEN': decodeURIComponent(getCookie('XSRF-TOKEN') || '')
@@ -445,7 +445,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
         services: bookingForm.service_ids
       };
 
-      const res = await fetch(`${API_BASE_URL}/backend/appointments`, {
+      const res = await fetch(`${API_BASE_URL}/api/appointments`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -521,7 +521,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
                   <button
                     onClick={async () => {
                       try {
-                        await fetch(`${API_BASE_URL}/backend/logout`, { 
+                        await fetch(`${API_BASE_URL}/api/logout`, { 
                           method: 'POST', 
                           credentials: 'include', 
                           headers: { 
@@ -921,7 +921,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     const loadSchedule = async () => {
       setLoadingSchedule(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/backend/appointments/schedule?date=${selectedDate}`, {
+        const res = await fetch(`${API_BASE_URL}/api/appointments/schedule?date=${selectedDate}`, {
           headers: getAuthHeaders()
         });
         const data = await res.json();
@@ -1007,7 +1007,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const fetchSalonSettings = async () => {
     setSettingsLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/admin/salon-settings`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/salon-settings`, {
         credentials: 'include',
         headers: getAuthHeaders()
       });
@@ -1046,7 +1046,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const fetchUsers = async () => {
     setUsersLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/admin/users`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/users`, {
         headers: getAuthHeaders()
       });
       const data = await res.json();
@@ -1060,7 +1060,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
 
   const fetchRoles = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/roles`, {
+      const res = await fetch(`${API_BASE_URL}/api/roles`, {
         headers: getAuthHeaders()
       });
       const data = await res.json();
@@ -1074,7 +1074,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     e.preventDefault();
     setUserMessage({ type: '', text: '' });
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/admin/users`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/users`, {
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(userForm)
@@ -1095,7 +1095,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const updateUser = async (id) => {
     setUserMessage({ type: '', text: '' });
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/admin/users/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/users/${id}`, {
         method: 'PUT',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(editUserForm)
@@ -1116,7 +1116,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const deleteUser = async (id) => {
     if (!confirm('Bạn có chắc chắn muốn xóa người dùng này?')) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/admin/users/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/users/${id}`, {
         method: 'DELETE',
         headers: getAuthHeaders()
       });
@@ -1146,7 +1146,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
 
   const fetchServices = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/services`);
+      const res = await fetch(`${API_BASE_URL}/api/services`);
       const data = await res.json();
       if (res.ok) setServices(data.data || data);
     } catch (error) { console.error(error); }
@@ -1154,7 +1154,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
 
   const fetchStaffs = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/staffs`);
+      const res = await fetch(`${API_BASE_URL}/api/staffs`);
       const data = await res.json();
       if (res.ok) setStaffs(data.data || data);
     } catch (error) { console.error(error); }
@@ -1162,7 +1162,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
 
   const fetchAppointments = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/admin/appointments`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/appointments`, {
         headers: getAuthHeaders()
       });
       const data = await res.json();
@@ -1178,7 +1178,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       Object.keys(formData).forEach(key => formDataToSend.append(key, formData[key]));
       if (imageFile) formDataToSend.append('image', imageFile);
 
-      const res = await fetch(`${API_BASE_URL}/backend/admin/services`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/services`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: formDataToSend
@@ -1206,7 +1206,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       Object.keys(editServiceForm).forEach(key => formDataToSend.append(key, editServiceForm[key]));
       if (editServiceImageFile) formDataToSend.append('image', editServiceImageFile);
 
-      const res = await fetch(`${API_BASE_URL}/backend/admin/services/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/services/${id}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: formDataToSend
@@ -1227,7 +1227,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const deleteService = async (id) => {
     if (!confirm('Bạn có chắc chắn muốn xóa dịch vụ này?')) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/admin/services/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/services/${id}`, {
         method: 'DELETE',
         headers: getAuthHeaders()
       });
@@ -1251,7 +1251,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     setIsSubmittingAppointment(true);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/admin/appointments`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/appointments`, {
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
@@ -1290,7 +1290,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
 
   const submitEditAppointmentByAdmin = async (id) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/admin/appointments/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/appointments/${id}`, {
         method: 'PUT',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
@@ -1312,7 +1312,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const deleteAppointmentByAdmin = async (id) => {
     if (!confirm('Bạn có chắc chắn muốn xóa lịch hẹn này?')) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/admin/appointments/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/appointments/${id}`, {
         method: 'DELETE',
         headers: getAuthHeaders()
       });
@@ -1325,7 +1325,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     setSettingsSaving(true);
     setSettingsMessage({ type: '', text: '' });
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/admin/salon-settings`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/salon-settings`, {
         method: 'PUT',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(settingsForm)
@@ -1357,7 +1357,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     formData.append('type', 'hero_image');
 
     try {
-      const res = await fetch(`${API_BASE_URL}/backend/admin/salon-settings/upload-image`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/salon-settings/upload-image`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: formData
@@ -2326,7 +2326,7 @@ function LoginRegister({ setAuth, initialMode, onBack }) {
     setLoading(true);
     setMessage({ type: '', text: '' });
 
-    const endpoint = mode === 'login' ? '/backend/login' : '/backend/register';
+    const endpoint = mode === 'login' ? '/api/login' : '/api/register';
     
     try {
       // Get CSRF cookie first for stateful sanctum
