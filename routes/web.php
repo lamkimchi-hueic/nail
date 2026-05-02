@@ -15,8 +15,9 @@ Route::get('/api/health-check', function () {
 });
 
 Route::get('/{any}', function (Request $request) {
-    if ($request->is('api/*')) {
-        return response()->json(['error' => 'API route not found'], 404);
-    }
-    return view('welcome');
+    return response()->json([
+        'path' => $request->path(),
+        'url' => $request->fullUrl(),
+        'uri' => $_SERVER['REQUEST_URI']
+    ]);
 })->where('any', '.*');
