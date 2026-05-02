@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
 
 Route::get('/', function () {
     return view('welcome');
@@ -10,14 +11,12 @@ Route::get('/test-route', function() {
     return "WEB ROUTE WORKING";
 });
 
-Route::get('/api/health-check', function () {
-    return response()->json(['status' => 'ok', 'message' => 'API WORKING FROM WEB.PHP']);
+// Fallback route cho SPA
+Route::fallback(function (Request $request) {
+    // Nếu là request API mà không khớp route nào, trả về 404 JSON
+    if ($request->is('api/*')) {
+        return response()->json(['error' => 'API Route not found'], 404);
+    }
+    // Còn lại trả về trang chủ React
+    return view('welcome');
 });
-
-Route::get('/{any}', function (Request $request) {
-    return response()->json([
-        'path' => $request->path(),
-        'url' => $request->fullUrl(),
-        'uri' => $_SERVER['REQUEST_URI']
-    ]);
-})->where('any', '.*');
