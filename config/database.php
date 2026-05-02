@@ -89,15 +89,15 @@ return [
             // 'url' => env('DATABASE_URL'),
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '5432'),
-            'database' => "neondb' options='endpoint=ep-lucky-lab-ao7l82u0",
+            'database' => env('DB_DATABASE', 'neondb'),
             'username' => env('DB_USERNAME', 'neondb_owner'),
-            'password' => env('DB_PASSWORD', 'npg_wRQ1KaiEjSm6'),
+            'password' => env('DB_PASSWORD', ''),
             'charset' => 'utf8',
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => 'require',
-            'options' => [],
+            'options' => env('DB_NEON_ENDPOINT') ? 'endpoint=' . env('DB_NEON_ENDPOINT') : '',
         ],
 
         'sqlsrv' => [

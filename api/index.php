@@ -17,8 +17,9 @@ $_SERVER['SERVER_PORT'] = 443;
 
 // Env config
 putenv('APP_ENV=production');
-putenv('APP_DEBUG=false');
+putenv('APP_DEBUG=true');
 putenv('APP_URL=https://nail-amber.vercel.app');
+putenv('APP_KEY=' . ($_ENV['APP_KEY'] ?? 'base64:rxkmM0ASgUlDbKPvk14NTqtlhkyijCJKlJdr4aPQSa0='));
 putenv('VIEW_COMPILED_PATH=/tmp/views');
 putenv('APP_CONFIG_CACHE=/tmp/config.php');
 putenv('APP_ROUTES_CACHE=/tmp/routes.php');
@@ -28,6 +29,20 @@ putenv('APP_EVENTS_CACHE=/tmp/events.php');
 putenv('LOG_CHANNEL=stderr');
 putenv('SESSION_DRIVER=cookie');
 putenv('CACHE_STORE=array');
+
+// Database config (Neon PostgreSQL)
+putenv('DB_CONNECTION=pgsql');
+putenv('DB_HOST=' . ($_ENV['DB_HOST'] ?? 'ep-lucky-lab-ao7l82u0-pooler.c-2.ap-southeast-1.aws.neon.tech'));
+putenv('DB_PORT=' . ($_ENV['DB_PORT'] ?? '5432'));
+putenv('DB_DATABASE=' . ($_ENV['DB_DATABASE'] ?? 'neondb'));
+putenv('DB_USERNAME=' . ($_ENV['DB_USERNAME'] ?? 'neondb_owner'));
+putenv('DB_PASSWORD=' . ($_ENV['DB_PASSWORD'] ?? 'npg_wRQ1KaiEjSm6'));
+putenv('DB_NEON_ENDPOINT=' . ($_ENV['DB_NEON_ENDPOINT'] ?? 'ep-lucky-lab-ao7l82u0'));
+
+// Auth config
+putenv('SANCTUM_STATEFUL_DOMAINS=' . ($_ENV['SANCTUM_STATEFUL_DOMAINS'] ?? 'nail-amber.vercel.app'));
+putenv('FRONTEND_URL=https://nail-amber.vercel.app');
+putenv('GOOGLE_REDIRECT_URI=https://nail-amber.vercel.app/api/auth/google/callback');
 
 if (!is_dir('/tmp/views')) {
     mkdir('/tmp/views', 0755, true);
