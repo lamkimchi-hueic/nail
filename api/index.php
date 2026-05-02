@@ -6,6 +6,8 @@ if (file_exists(__DIR__ . '/../public' . $_SERVER['REQUEST_URI'])) {
 }
 
 // Cấu hình đường dẫn tạm cho Vercel (môi trường read-only, chỉ /tmp cho phép ghi)
+$_ENV['APP_ENV'] = 'production';
+$_ENV['APP_DEBUG'] = 'false';
 $_ENV['VIEW_COMPILED_PATH'] = '/tmp/views';
 $_ENV['APP_CONFIG_CACHE'] = '/tmp/config.php';
 $_ENV['APP_ROUTES_CACHE'] = '/tmp/routes.php';
