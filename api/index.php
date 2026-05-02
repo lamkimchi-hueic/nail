@@ -1,22 +1,23 @@
 <?php
 
 // Chuyển hướng các yêu cầu file tĩnh (ảnh, css, js...) vào thư mục public
-if (file_exists(__DIR__ . '/../public' . $_SERVER['REQUEST_URI'])) {
+if (is_file(__DIR__ . '/../public' . $_SERVER['REQUEST_URI'])) {
     return false;
 }
 
-// Cấu hình đường dẫn tạm cho Vercel (môi trường read-only, chỉ /tmp cho phép ghi)
-$_ENV['APP_ENV'] = 'production';
-$_ENV['APP_DEBUG'] = 'false';
-$_ENV['VIEW_COMPILED_PATH'] = '/tmp/views';
-$_ENV['APP_CONFIG_CACHE'] = '/tmp/config.php';
-$_ENV['APP_ROUTES_CACHE'] = '/tmp/routes.php';
-$_ENV['APP_PACKAGES_CACHE'] = '/tmp/packages.php';
-$_ENV['APP_SERVICES_CACHE'] = '/tmp/services.php';
-$_ENV['APP_EVENTS_CACHE'] = '/tmp/events.php';
-$_ENV['LOG_CHANNEL'] = 'stderr';
-$_ENV['SESSION_DRIVER'] = 'cookie';
-$_ENV['CACHE_STORE'] = 'array';
+// Cấu hình cho Vercel (môi trường read-only, chỉ /tmp cho phép ghi)
+// Dùng putenv() để Laravel đọc được qua env()
+putenv('APP_ENV=production');
+putenv('APP_DEBUG=false');
+putenv('VIEW_COMPILED_PATH=/tmp/views');
+putenv('APP_CONFIG_CACHE=/tmp/config.php');
+putenv('APP_ROUTES_CACHE=/tmp/routes.php');
+putenv('APP_PACKAGES_CACHE=/tmp/packages.php');
+putenv('APP_SERVICES_CACHE=/tmp/services.php');
+putenv('APP_EVENTS_CACHE=/tmp/events.php');
+putenv('LOG_CHANNEL=stderr');
+putenv('SESSION_DRIVER=cookie');
+putenv('CACHE_STORE=array');
 
 // Tạo thư mục views tạm nếu chưa tồn tại
 if (!is_dir('/tmp/views')) {
