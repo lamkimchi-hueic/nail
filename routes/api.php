@@ -12,6 +12,10 @@ use App\Http\Controllers\OAuthController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\UserController;
 
+Route::get('/health-check', function () {
+    return response()->json(['status' => 'ok', 'message' => 'API is working']);
+});
+
 // OAuth routes
 Route::get('/auth/google', [OAuthController::class, 'redirectToGoogle'])->name('google.redirect');
 Route::get('/auth/google/callback', [OAuthController::class, 'handleGoogleCallback'])->name('google.callback');
