@@ -97,7 +97,7 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => 'require',
-            'options' => env('DB_NEON_ENDPOINT') ? 'endpoint=' . env('DB_NEON_ENDPOINT') : '',
+            'options' => [],
         ],
 
         'sqlsrv' => [
