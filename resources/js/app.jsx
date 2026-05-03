@@ -1654,7 +1654,16 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
     try {
       const res = await fetch(`${API_BASE_URL}/api/staffs`);
       const data = await res.json();
-      if (res.ok) setStaffs(data.data || data);
+      if (res.ok) {
+        const payload = data.data || data;
+        const list = Array.isArray(payload) ? payload : [];
+        setStaffs(list);
+        setNewAppointmentForm((prev) => (
+          prev.staff_id || list.length === 0
+            ? prev
+            : { ...prev, staff_id: String(list[0].id) }
+        ));
+      }
     } catch (error) { console.error(error); }
   };
 
@@ -1803,6 +1812,11 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
       return;
     }
 
+    if (!newAppointmentForm.staff_id) {
+      setAppointmentMessage({ type: 'error', text: 'Vui lòng chọn nhân viên phụ trách.' });
+      return;
+    }
+
     setIsSubmittingAppointment(true);
 
     try {
@@ -1822,7 +1836,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
       if (res.ok) {
         setAppointmentMessage({ type: 'success', text: 'Thêm lịch hẹn thành công' });
         notifyAdmin('success', 'Thêm lịch hẹn thành công');
-        setNewAppointmentForm({ name: '', phone: '', staff_id: '', appointment_date: '', appointment_time: '09:00', service_ids: [], notes: '' });
+        setNewAppointmentForm({ name: '', phone: '', staff_id: staffs[0]?.id ? String(staffs[0].id) : '', appointment_date: '', appointment_time: '09:00', service_ids: [], notes: '' });
         fetchAppointments();
       } else {
         const text = getApiErrorText(data, 'Lỗi khi thêm lịch hẹn');
@@ -2394,9 +2408,10 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                 <select
                   value={newAppointmentForm.staff_id}
                   onChange={(e) => setNewAppointmentForm({ ...newAppointmentForm, staff_id: e.target.value })}
+                  required
                   className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
                 >
-                  <option value="">Nhân viên bất kỳ</option>
+                  <option value="" disabled>Chọn nhân viên</option>
                   {(Array.isArray(staffs) ? staffs : []).map((staff) => (
                     <option key={staff.id} value={staff.id}>{staff.name}</option>
                   ))}

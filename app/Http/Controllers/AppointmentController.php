@@ -258,7 +258,7 @@ class AppointmentController extends Controller
                 'phone' => 'nullable|string|max:20',
                 'name' => 'nullable|string|max:255',
                 'appointment_date' => 'required|date|after:now',
-                'staff_id' => 'nullable|integer',
+                'staff_id' => 'required|integer|exists:staffs,id',
                 'services' => 'required|array|min:1',
                 'services.*' => 'exists:services,id',
                 'notes' => 'nullable|string',
@@ -273,7 +273,7 @@ class AppointmentController extends Controller
                 ], 422);
             }
 
-            $staffId = $this->resolveStaffId(isset($validated['staff_id']) ? (int) $validated['staff_id'] : null);
+            $staffId = (int) $validated['staff_id'];
 
             if (!$staffId) {
                 return response()->json([
