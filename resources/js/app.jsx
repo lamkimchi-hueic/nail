@@ -702,6 +702,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
     try {
       const payload = {
         ...bookingForm,
+        staff_id: bookingForm.staff_id || null,
         appointment_date: `${bookingForm.appointment_date} ${bookingForm.appointment_time}:00`,
         services: bookingForm.service_ids
       };
