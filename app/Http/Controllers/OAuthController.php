@@ -165,10 +165,6 @@ class OAuthController extends Controller
             // Create Sanctum token
             $token = $user->createToken('auth_token')->plainTextToken;
 
-            // Session login for web guard
-            Auth::login($user);
-            $request->session()->regenerate();
-
             return response()->json([
                 'success' => true,
                 'message' => 'Đăng ký thành công',

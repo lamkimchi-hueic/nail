@@ -154,20 +154,51 @@ function getAuthHeaders(extra = {}) {
   };
 }
 
+function clearClientAuthStorage() {
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('userAuth');
+  ['XSRF-TOKEN', 'laravel-session', 'laravel_session'].forEach((name) => {
+    document.cookie = `${name}=; Max-Age=0; path=/`;
+    document.cookie = `${name}=; Max-Age=0; path=/; SameSite=Lax`;
+  });
+}
+
 async function logoutCurrentUser(setAuth) {
+  const headers = getAuthHeaders();
+  clearClientAuthStorage();
+  setAuth(null);
+
   try {
     await fetch(`${API_BASE_URL}/api/logout`, {
       method: 'POST',
       credentials: 'include',
-      headers: getAuthHeaders()
+      headers
     });
   } catch (error) {
     console.error('logout error:', error);
-  } finally {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('userAuth');
-    setAuth(null);
   }
+}
+
+function LoadingOverlay({ show, label = 'Đang xử lý...' }) {
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
+      <div className="flex items-center gap-3 rounded-2xl border border-[#d5a56a]/40 bg-[#140d1f] px-5 py-4 text-[#f8e7d9] shadow-2xl shadow-black/50">
+        <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#d5a56a] border-t-transparent" />
+        <span className="text-sm font-black uppercase tracking-wide">{label}</span>
+      </div>
+    </div>
+  );
+}
+
+function InlineLoader({ label = 'Đang tải...' }) {
+  return (
+    <div className="flex items-center gap-2 text-sm text-[#c8b4b6]">
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#d5a56a] border-t-transparent" />
+      <span>{label}</span>
+    </div>
+  );
 }
 
 function formatServicePrice(value) {
@@ -336,8 +367,7 @@ function App() {
       if (nextAuth?.user) {
         localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextAuth));
       } else {
-        localStorage.removeItem(AUTH_STORAGE_KEY);
-        localStorage.removeItem('auth_token');
+        clearClientAuthStorage();
         setShowAdminPanel(false);
       }
     } catch (e) {
@@ -355,6 +385,13 @@ function App() {
     const fetchUser = async () => {
       try {
         const authToken = localStorage.getItem('auth_token');
+        if (!authToken) {
+          clearClientAuthStorage();
+          setAuth(null);
+          setLoading(false);
+          return;
+        }
+
         const res = await fetch(`${API_BASE_URL}/api/user`, {
           credentials: 'include',
           headers: {
@@ -413,7 +450,10 @@ function App() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100">
-        <p className="text-lg font-semibold text-slate-700">Đang tải...</p>
+        <div className="flex items-center gap-3 text-lg font-semibold text-slate-700">
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-600 border-t-transparent" />
+          <span>Đang tải tài khoản...</span>
+        </div>
       </div>
     );
   }
@@ -1017,7 +1057,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
           </div>
 
           {loadingServices ? (
-            <p className="text-sm text-[#c8b4b6]">Đang tải dịch vụ...</p>
+            <InlineLoader label="Đang tải dịch vụ..." />
           ) : (
             <div className="grid gap-4 md:grid-cols-3">
               {(Array.isArray(services) ? services : []).slice(0, 3).map((service) => (
@@ -1069,7 +1109,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
             </div>
 
             {loadingAppointments ? (
-              <p className="text-sm text-[#c8b4b6]">Đang tải lịch hẹn...</p>
+              <InlineLoader label="Đang tải lịch hẹn..." />
             ) : myAppointments.length === 0 ? (
               <div className="rounded-xl border border-[#8d6a52]/20 bg-[#170f22] p-8 text-center">
                 <p className="text-[#c7b4b6] italic">Bạn chưa có lịch hẹn nào.</p>
@@ -1202,6 +1242,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [adminNotice, setAdminNotice] = useState({ type: '', text: '' });
   const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', onConfirm: null });
+  const [adminActionLoading, setAdminActionLoading] = useState('');
 
   const EXPIRED_TOKEN_MESSAGE = 'Vui lòng thoát và đăng nhập lại';
 
@@ -1212,6 +1253,15 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
   const requestConfirm = (title, message, onConfirm) => {
     setConfirmDialog({ open: true, title, message, onConfirm });
   };
+
+  const adminBusyLabel = adminActionLoading
+    || (settingsSaving ? 'Đang lưu cài đặt...'
+      : heroImageUploading ? 'Đang tải ảnh...'
+        : isSubmittingAppointment ? 'Đang xử lý lịch hẹn...'
+          : usersLoading ? 'Đang tải người dùng...'
+            : settingsLoading ? 'Đang tải cài đặt...'
+              : loadingSchedule ? 'Đang tải lịch trống...'
+                : '');
 
   const getAuthHeaders = (extraHeaders = {}) => {
     const authToken = localStorage.getItem('auth_token');
@@ -1418,6 +1468,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
   const addUser = async (e) => {
     e.preventDefault();
     setUserMessage({ type: '', text: '' });
+    setAdminActionLoading('Đang thêm người dùng...');
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/users`, {
         method: 'POST',
@@ -1438,11 +1489,14 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
     } catch (error) {
       setUserMessage({ type: 'error', text: 'Lỗi kết nối' });
       notifyAdmin('error', 'Lỗi kết nối khi thêm người dùng');
+    } finally {
+      setAdminActionLoading('');
     }
   };
 
   const updateUser = async (id) => {
     setUserMessage({ type: '', text: '' });
+    setAdminActionLoading('Đang cập nhật người dùng...');
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/users/${id}`, {
         method: 'PUT',
@@ -1463,32 +1517,37 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
     } catch (error) {
       setUserMessage({ type: 'error', text: 'Lỗi kết nối' });
       notifyAdmin('error', 'Lỗi kết nối khi cập nhật người dùng');
+    } finally {
+      setAdminActionLoading('');
     }
   };
 
   const deleteUser = async (id) => {
     requestConfirm('Xóa người dùng', 'Bạn có chắc chắn muốn xóa người dùng này? Thao tác này không thể hoàn tác.', async () => {
       setConfirmDialog({ open: false, title: '', message: '', onConfirm: null });
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/users/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setUserMessage({ type: 'success', text: 'Đã xóa người dùng thành công.' });
-        notifyAdmin('success', 'Đã xóa người dùng thành công');
-        fetchUsers();
-      } else {
-        const text = data.message || 'Lỗi khi xóa người dùng.';
-        setUserMessage({ type: 'error', text });
-        notifyAdmin('error', text);
+      setAdminActionLoading('Đang xóa người dùng...');
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/users/${id}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setUserMessage({ type: 'success', text: 'Đã xóa người dùng thành công.' });
+          notifyAdmin('success', 'Đã xóa người dùng thành công');
+          fetchUsers();
+        } else {
+          const text = data.message || 'Lỗi khi xóa người dùng.';
+          setUserMessage({ type: 'error', text });
+          notifyAdmin('error', text);
+        }
+      } catch (error) {
+        console.error(error);
+        setUserMessage({ type: 'error', text: 'Lỗi kết nối khi xóa người dùng.' });
+        notifyAdmin('error', 'Lỗi kết nối khi xóa người dùng');
+      } finally {
+        setAdminActionLoading('');
       }
-    } catch (error) {
-      console.error(error);
-      setUserMessage({ type: 'error', text: 'Lỗi kết nối khi xóa người dùng.' });
-      notifyAdmin('error', 'Lỗi kết nối khi xóa người dùng');
-    }
     });
   };
 
@@ -1533,6 +1592,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
   const addService = async (e) => {
     e.preventDefault();
     setServiceFormMessage({ type: '', text: '' });
+    setAdminActionLoading('Đang thêm dịch vụ...');
     try {
       const formDataToSend = new FormData();
       Object.keys(formData).forEach(key => formDataToSend.append(key, formData[key]));
@@ -1559,11 +1619,14 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
     } catch (error) {
       setServiceFormMessage({ type: 'error', text: 'Lỗi kết nối' });
       notifyAdmin('error', 'Lỗi kết nối khi thêm dịch vụ');
+    } finally {
+      setAdminActionLoading('');
     }
   };
 
   const updateService = async (id) => {
     setServiceFormMessage({ type: '', text: '' });
+    setAdminActionLoading('Đang cập nhật dịch vụ...');
     try {
       const formDataToSend = new FormData();
       formDataToSend.append('_method', 'PUT');
@@ -1589,27 +1652,32 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
     } catch (error) {
       setServiceFormMessage({ type: 'error', text: 'Lỗi kết nối' });
       notifyAdmin('error', 'Lỗi kết nối khi cập nhật dịch vụ');
+    } finally {
+      setAdminActionLoading('');
     }
   };
 
   const deleteService = async (id) => {
     requestConfirm('Xóa dịch vụ', 'Bạn có chắc chắn muốn xóa dịch vụ này? Dịch vụ sẽ không còn hiển thị để đặt lịch.', async () => {
       setConfirmDialog({ open: false, title: '', message: '', onConfirm: null });
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/services/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-      if (res.ok) {
-        notifyAdmin('success', 'Đã xóa dịch vụ');
-        fetchServices();
-      } else {
-        notifyAdmin('error', 'Lỗi khi xóa dịch vụ');
+      setAdminActionLoading('Đang xóa dịch vụ...');
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/services/${id}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        if (res.ok) {
+          notifyAdmin('success', 'Đã xóa dịch vụ');
+          fetchServices();
+        } else {
+          notifyAdmin('error', 'Lỗi khi xóa dịch vụ');
+        }
+      } catch (error) {
+        console.error(error);
+        notifyAdmin('error', 'Lỗi kết nối khi xóa dịch vụ');
+      } finally {
+        setAdminActionLoading('');
       }
-    } catch (error) {
-      console.error(error);
-      notifyAdmin('error', 'Lỗi kết nối khi xóa dịch vụ');
-    }
     });
   };
 
@@ -1671,6 +1739,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
   };
 
   const submitEditAppointmentByAdmin = async (id) => {
+    setAdminActionLoading('Đang cập nhật lịch hẹn...');
     try {
       const res = await fetch(`${API_BASE_URL}/api/appointments/${id}/admin`, {
         method: 'PUT',
@@ -1692,27 +1761,32 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
     } catch (error) {
       console.error(error);
       notifyAdmin('error', 'Lỗi kết nối khi cập nhật lịch hẹn');
+    } finally {
+      setAdminActionLoading('');
     }
   };
 
   const deleteAppointmentByAdmin = async (id) => {
     requestConfirm('Xóa lịch hẹn', 'Bạn có chắc chắn muốn xóa lịch hẹn này? Khách hàng sẽ không còn thấy lịch này.', async () => {
       setConfirmDialog({ open: false, title: '', message: '', onConfirm: null });
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/appointments/${id}/admin`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-      if (res.ok) {
-        notifyAdmin('success', 'Đã xóa lịch hẹn');
-        fetchAppointments();
-      } else {
-        notifyAdmin('error', 'Lỗi khi xóa lịch hẹn');
+      setAdminActionLoading('Đang xóa lịch hẹn...');
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/appointments/${id}/admin`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        if (res.ok) {
+          notifyAdmin('success', 'Đã xóa lịch hẹn');
+          fetchAppointments();
+        } else {
+          notifyAdmin('error', 'Lỗi khi xóa lịch hẹn');
+        }
+      } catch (error) {
+        console.error(error);
+        notifyAdmin('error', 'Lỗi kết nối khi xóa lịch hẹn');
+      } finally {
+        setAdminActionLoading('');
       }
-    } catch (error) {
-      console.error(error);
-      notifyAdmin('error', 'Lỗi kết nối khi xóa lịch hẹn');
-    }
     });
   };
 
@@ -1792,27 +1866,30 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
     if (!url) return;
     requestConfirm('Xóa ảnh', 'Bạn có chắc chắn muốn xóa ảnh này khỏi trang chủ?', async () => {
       setConfirmDialog({ open: false, title: '', message: '', onConfirm: null });
-    setHeroImageMessage({ type: '', text: '' });
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/salon-settings/delete-image`, {
-        method: 'DELETE',
-        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ url, type })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setHeroImageMessage({ type: 'success', text: 'Đã xóa ảnh.' });
-        notifyAdmin('success', 'Đã xóa ảnh');
-        fetchSalonSettings();
-      } else {
-        const text = data.message || 'Lỗi khi xóa ảnh.';
-        setHeroImageMessage({ type: 'error', text });
-        notifyAdmin('error', text);
+      setAdminActionLoading('Đang xóa ảnh...');
+      setHeroImageMessage({ type: '', text: '' });
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/salon-settings/delete-image`, {
+          method: 'DELETE',
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ url, type })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setHeroImageMessage({ type: 'success', text: 'Đã xóa ảnh.' });
+          notifyAdmin('success', 'Đã xóa ảnh');
+          fetchSalonSettings();
+        } else {
+          const text = data.message || 'Lỗi khi xóa ảnh.';
+          setHeroImageMessage({ type: 'error', text });
+          notifyAdmin('error', text);
+        }
+      } catch (error) {
+        setHeroImageMessage({ type: 'error', text: 'Lỗi kết nối khi xóa ảnh.' });
+        notifyAdmin('error', 'Lỗi kết nối khi xóa ảnh');
+      } finally {
+        setAdminActionLoading('');
       }
-    } catch (error) {
-      setHeroImageMessage({ type: 'error', text: 'Lỗi kết nối khi xóa ảnh.' });
-      notifyAdmin('error', 'Lỗi kết nối khi xóa ảnh');
-    }
     });
   };
 
@@ -1826,6 +1903,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
 
   return (
     <div className="flex min-h-screen bg-[#08050c] text-[#f8e7d9]">
+      <LoadingOverlay show={Boolean(adminBusyLabel)} label={adminBusyLabel} />
       <ConfirmDialog
         dialog={confirmDialog}
         onCancel={() => setConfirmDialog({ open: false, title: '', message: '', onConfirm: null })}
@@ -2910,6 +2988,7 @@ function LoginRegister({ setAuth, initialMode, onBack }) {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#08050c] p-4 text-[#f8e7d9]">
+      <LoadingOverlay show={loading} label={mode === 'login' ? 'Đang đăng nhập...' : 'Đang tạo tài khoản...'} />
       <div className="w-full max-w-md rounded-2xl border border-[#d5a56a]/30 bg-[#140d1f] p-8 shadow-2xl shadow-black/40">
         <button onClick={onBack} className="mb-6 text-sm font-bold text-[#d5a56a] hover:text-white">← Quay lại</button>
         <h2 className="mb-6 text-3xl font-black uppercase tracking-wide text-[#f7d9b2]">

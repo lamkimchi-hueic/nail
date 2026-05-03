@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\SpatieRoleSetup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
@@ -58,10 +59,6 @@ class AuthController extends Controller
 
             // Create Sanctum token
             $token = $user->createToken('auth_token')->plainTextToken;
-
-            // Create session-based auth for web guard requests
-            Auth::login($user);
-            $request->session()->regenerate();
 
             $message = $role === 'admin' ? 'Đăng ký admin thành công' : 'Đăng ký khách hàng thành công';
 
@@ -131,10 +128,6 @@ class AuthController extends Controller
 
             // Create Sanctum token
             $token = $user->createToken('auth_token')->plainTextToken;
-
-            // Create session-based auth for web guard requests
-            Auth::login($user);
-            $request->session()->regenerate();
 
             return response()->json([
                 'success' => true,
@@ -212,7 +205,8 @@ class AuthController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Đăng xuất thành công'
-            ]);
+            ])->withCookie(Cookie::forget(config('session.cookie')))
+                ->withCookie(Cookie::forget('XSRF-TOKEN'));
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
