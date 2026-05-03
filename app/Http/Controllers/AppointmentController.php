@@ -415,14 +415,23 @@ class AppointmentController extends Controller
                     $user = User::firstOrCreate(
                         ['phone' => $normalizedPhone],
                         [
+                            'name' => $validated['name'],
                             'username' => $this->makeGuestUsername($normalizedPhone),
                             'password' => Hash::make(Str::random(16)),
                             'role' => 'customer',
                         ]
                     );
+                    if (($user->name ?? '') !== $validated['name']) {
+                        $user->name = $validated['name'];
+                        $user->save();
+                    }
                     $user->syncRoles(['customer']);
                 } else {
                     $user = User::findOrFail($validated['user_id']);
+                    if (!empty($validated['name']) && ($user->name ?? '') !== $validated['name']) {
+                        $user->name = $validated['name'];
+                        $user->save();
+                    }
                 }
 
                 // Calculate total price

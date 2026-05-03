@@ -1215,6 +1215,8 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
   });
 
   const [editAppointmentForm, setEditAppointmentForm] = useState({
+    name: '',
+    phone: '',
     staff_id: '',
     appointment_date: '',
     appointment_time: '09:00',
@@ -1855,6 +1857,8 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
     const dateTimeParts = getLocalDateTimeParts(apt.appointment_date);
     setEditingAppointmentId(apt.id);
     setEditAppointmentForm({
+      name: apt.user?.name || apt.customer_name || apt.name || '',
+      phone: apt.user?.phone || apt.phone || '',
       staff_id: String(apt.staff_id || ''),
       appointment_date: dateTimeParts.date,
       appointment_time: dateTimeParts.time,
@@ -2486,8 +2490,8 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                 <div key={apt.id} className="rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
                   <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-lg font-bold text-[#f7dfc2]">{apt.user?.name || apt.customer_name || apt.name || 'N/A'}</p>
-                    <p className="text-sm text-[#f3d5b8] mb-1">{apt.user?.phone || apt.phone}</p>
+                    <p className="text-lg font-bold text-[#f7dfc2]">{apt.user?.name || apt.customer_name || apt.name || apt.user?.username || `Khách #${apt.id}`}</p>
+                    <p className="text-sm text-[#f3d5b8] mb-1">{apt.user?.phone || apt.phone || 'Chưa có số điện thoại'}</p>
                     <p className="text-sm text-[#c7b4b6] mb-1">
                       Dịch vụ: {(Array.isArray(apt.services) ? apt.services : []).map(s => s.name).join(', ') || 'N/A'}
                     </p>
@@ -2518,6 +2522,21 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                       <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#d8a56c]">Cập nhật thông tin lịch hẹn</p>
 
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <input
+                          type="text"
+                          value={editAppointmentForm.name}
+                          onChange={(e) => setEditAppointmentForm((prev) => ({ ...prev, name: e.target.value }))}
+                          placeholder="Tên khách hàng"
+                          className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                        />
+
+                        <input
+                          type="text"
+                          value={editAppointmentForm.phone}
+                          onChange={(e) => setEditAppointmentForm((prev) => ({ ...prev, phone: e.target.value }))}
+                          placeholder="Số điện thoại"
+                          className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                        />
 
                         <select
                           value={editAppointmentForm.status}
