@@ -1207,7 +1207,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
   const [newAppointmentForm, setNewAppointmentForm] = useState({
     name: '',
     phone: '',
-    staff_id: '1',
+    staff_id: '',
     appointment_date: '',
     appointment_time: '09:00',
     service_ids: [],
@@ -1215,7 +1215,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
   });
 
   const [editAppointmentForm, setEditAppointmentForm] = useState({
-    staff_id: '1',
+    staff_id: '',
     appointment_date: '',
     appointment_time: '09:00',
     service_ids: [],
@@ -1295,6 +1295,14 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
       return false;
     }
     return true;
+  };
+
+  const getApiErrorText = (data, fallback) => {
+    const errorLines = data?.errors && typeof data.errors === 'object'
+      ? Object.values(data.errors).flat().filter(Boolean)
+      : [];
+
+    return errorLines.length > 0 ? errorLines.join(' ') : (data?.message || fallback);
   };
 
   const handleServiceImageChange = (file) => {
@@ -1784,26 +1792,40 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
   const submitNewAppointment = async (e) => {
     e.preventDefault();
     setAppointmentMessage({ type: '', text: '' });
+
+    if (!newAppointmentForm.appointment_date || !newAppointmentForm.appointment_time) {
+      setAppointmentMessage({ type: 'error', text: 'Vui lòng chọn ngày và giờ hẹn.' });
+      return;
+    }
+
+    if (newAppointmentForm.service_ids.length === 0) {
+      setAppointmentMessage({ type: 'error', text: 'Vui lòng chọn ít nhất 1 dịch vụ.' });
+      return;
+    }
+
     setIsSubmittingAppointment(true);
 
     try {
+      const payload = {
+        ...newAppointmentForm,
+        staff_id: newAppointmentForm.staff_id || null,
+        appointment_date: `${newAppointmentForm.appointment_date} ${newAppointmentForm.appointment_time}:00`,
+        services: newAppointmentForm.service_ids
+      };
+
       const res = await fetch(`${API_BASE_URL}/api/appointments/create-manual`, {
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          ...newAppointmentForm,
-          appointment_date: `${newAppointmentForm.appointment_date} ${newAppointmentForm.appointment_time}:00`,
-          services: newAppointmentForm.service_ids
-        })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (res.ok) {
         setAppointmentMessage({ type: 'success', text: 'Thêm lịch hẹn thành công' });
         notifyAdmin('success', 'Thêm lịch hẹn thành công');
-        setNewAppointmentForm({ name: '', phone: '', staff_id: '1', appointment_date: '', appointment_time: '09:00', service_ids: [], notes: '' });
+        setNewAppointmentForm({ name: '', phone: '', staff_id: '', appointment_date: '', appointment_time: '09:00', service_ids: [], notes: '' });
         fetchAppointments();
       } else {
-        const text = data.message || 'Lỗi khi thêm lịch hẹn';
+        const text = getApiErrorText(data, 'Lỗi khi thêm lịch hẹn');
         setAppointmentMessage({ type: 'error', text });
         notifyAdmin('error', text);
       }
@@ -1819,7 +1841,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
     const dateTimeParts = getLocalDateTimeParts(apt.appointment_date);
     setEditingAppointmentId(apt.id);
     setEditAppointmentForm({
-      staff_id: String(apt.staff_id || '1'),
+      staff_id: String(apt.staff_id || ''),
       appointment_date: dateTimeParts.date,
       appointment_time: dateTimeParts.time,
       service_ids: (apt.services || []).map(s => s.id),
@@ -1836,6 +1858,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           ...editAppointmentForm,
+          staff_id: editAppointmentForm.staff_id || null,
           appointment_date: `${editAppointmentForm.appointment_date} ${editAppointmentForm.appointment_time}:00`,
           services: editAppointmentForm.service_ids
         })
@@ -1846,7 +1869,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
         notifyAdmin('success', 'Cập nhật lịch hẹn thành công');
         fetchAppointments();
       } else {
-        notifyAdmin('error', data.message || 'Lỗi khi cập nhật lịch hẹn');
+        notifyAdmin('error', getApiErrorText(data, 'Lỗi khi cập nhật lịch hẹn'));
       }
     } catch (error) {
       console.error(error);
@@ -2368,6 +2391,16 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                     </div>
                   )}
                 </div>
+                <select
+                  value={newAppointmentForm.staff_id}
+                  onChange={(e) => setNewAppointmentForm({ ...newAppointmentForm, staff_id: e.target.value })}
+                  className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                >
+                  <option value="">Nhân viên bất kỳ</option>
+                  {(Array.isArray(staffs) ? staffs : []).map((staff) => (
+                    <option key={staff.id} value={staff.id}>{staff.name}</option>
+                  ))}
+                </select>
               </div>
 
               {showNewAptTimeGrid && (

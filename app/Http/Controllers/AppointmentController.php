@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Models\AppointmentDetail;
+use App\Models\Staff;
 use App\Models\Service;
 use App\Models\User;
 use App\Support\SpatieRoleSetup;
@@ -40,6 +41,15 @@ class AppointmentController extends Controller
         }
 
         return $query->exists();
+    }
+
+    private function resolveStaffId(?int $requestedStaffId = null): ?int
+    {
+        if ($requestedStaffId && Staff::whereKey($requestedStaffId)->exists()) {
+            return $requestedStaffId;
+        }
+
+        return Staff::query()->orderBy('id')->value('id');
     }
 
     private function canGuestAccessAppointment(Appointment $appointment, ?string $phone): bool
@@ -248,7 +258,7 @@ class AppointmentController extends Controller
                 'phone' => 'nullable|string|max:20',
                 'name' => 'nullable|string|max:255',
                 'appointment_date' => 'required|date|after:now',
-                'staff_id' => 'nullable|exists:staffs,id',
+                'staff_id' => 'nullable|integer',
                 'services' => 'required|array|min:1',
                 'services.*' => 'exists:services,id',
                 'notes' => 'nullable|string',
@@ -263,7 +273,14 @@ class AppointmentController extends Controller
                 ], 422);
             }
 
-            $staffId = $validated['staff_id'] ?? \App\Models\Staff::first()?->id ?? 1;
+            $staffId = $this->resolveStaffId(isset($validated['staff_id']) ? (int) $validated['staff_id'] : null);
+
+            if (!$staffId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Chưa có nhân viên nào trong hệ thống. Vui lòng thêm nhân viên trước khi đặt lịch.',
+                ], 422);
+            }
 
             if ($this->isTimeSlotBooked((int) $staffId, $appointmentDateTime)) {
                 return response()->json([
@@ -352,7 +369,7 @@ class AppointmentController extends Controller
                 'phone' => 'required_without:user_id|string|max:20',
                 'name' => 'required_without:user_id|string|max:255',
                 'appointment_date' => 'required|date|after:now',
-                'staff_id' => 'required|exists:staffs,id',
+                'staff_id' => 'nullable|integer',
                 'services' => 'required|array|min:1',
                 'services.*' => 'exists:services,id',
                 'notes' => 'nullable|string'
@@ -360,7 +377,14 @@ class AppointmentController extends Controller
 
             $appointmentDateTime = Carbon::parse($validated['appointment_date']);
 
-            $staffId = $validated['staff_id'] ?? \App\Models\Staff::first()?->id ?? 1;
+            $staffId = $this->resolveStaffId(isset($validated['staff_id']) ? (int) $validated['staff_id'] : null);
+
+            if (!$staffId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Chưa có nhân viên nào trong hệ thống. Vui lòng thêm nhân viên trước khi tạo lịch hẹn.',
+                ], 422);
+            }
 
             if ($this->isTimeSlotBooked((int) $staffId, $appointmentDateTime)) {
                 return response()->json([
@@ -444,7 +468,7 @@ class AppointmentController extends Controller
                 'name' => 'nullable|string|max:255',
                 'phone' => 'nullable|string|max:255',
                 'appointment_date' => 'nullable|date',
-                'staff_id' => 'nullable|exists:staffs,id',
+                'staff_id' => 'nullable|integer',
                 'services' => 'nullable|array|min:1',
                 'services.*' => 'exists:services,id',
                 'notes' => 'nullable|string',
@@ -453,7 +477,7 @@ class AppointmentController extends Controller
 
             $appointment = Appointment::with(['user', 'staff', 'services'])->findOrFail($id);
 
-            $targetStaffId = (int) ($validated['staff_id'] ?? $appointment->staff_id);
+            $targetStaffId = $this->resolveStaffId(isset($validated['staff_id']) ? (int) $validated['staff_id'] : null) ?? (int) $appointment->staff_id;
             $targetDateTime = isset($validated['appointment_date'])
                 ? Carbon::parse($validated['appointment_date'])
                 : Carbon::parse($appointment->appointment_date);
@@ -616,7 +640,7 @@ class AppointmentController extends Controller
             $validated = $request->validate([
                 'phone' => 'required|string|max:20',
                 'appointment_date' => 'nullable|date|after:now',
-                'staff_id' => 'nullable|exists:staffs,id',
+                'staff_id' => 'nullable|integer',
                 'services' => 'nullable|array|min:1',
                 'services.*' => 'exists:services,id',
                 'notes' => 'nullable|string'
@@ -643,7 +667,7 @@ class AppointmentController extends Controller
                 ], 400);
             }
 
-            $targetStaffId = (int) ($validated['staff_id'] ?? $appointment->staff_id);
+            $targetStaffId = $this->resolveStaffId(isset($validated['staff_id']) ? (int) $validated['staff_id'] : null) ?? (int) $appointment->staff_id;
             $targetDateTime = isset($validated['appointment_date'])
                 ? Carbon::parse($validated['appointment_date'])
                 : Carbon::parse($appointment->appointment_date);
@@ -789,7 +813,7 @@ class AppointmentController extends Controller
 
             $validated = $request->validate([
                 'appointment_date' => 'nullable|date|after:now',
-                'staff_id' => 'nullable|exists:staffs,id',
+                'staff_id' => 'nullable|integer',
                 'services' => 'nullable|array|min:1',
                 'services.*' => 'exists:services,id',
                 'notes' => 'nullable|string'
@@ -806,7 +830,7 @@ class AppointmentController extends Controller
                 ], 400);
             }
 
-            $targetStaffId = (int) ($validated['staff_id'] ?? $appointment->staff_id);
+            $targetStaffId = $this->resolveStaffId(isset($validated['staff_id']) ? (int) $validated['staff_id'] : null) ?? (int) $appointment->staff_id;
             
             // Explicitly parse with the app timezone to be safe
             $targetDateTime = isset($validated['appointment_date'])
