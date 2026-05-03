@@ -154,6 +154,22 @@ function getAuthHeaders(extra = {}) {
   };
 }
 
+async function logoutCurrentUser(setAuth) {
+  try {
+    await fetch(`${API_BASE_URL}/api/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: getAuthHeaders()
+    });
+  } catch (error) {
+    console.error('logout error:', error);
+  } finally {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('userAuth');
+    setAuth(null);
+  }
+}
+
 function formatServicePrice(value) {
   const amount = Number(value || 0);
   if (!amount) return 'Liên hệ';
@@ -429,6 +445,7 @@ function App() {
       <AdminPanel
         auth={auth}
         setAuth={setAuth}
+        onLogout={() => logoutCurrentUser(setAuth)}
         page={adminPage}
         setPage={setAdminPage}
       />
@@ -441,13 +458,14 @@ function App() {
       auth={auth}
       setAuth={setAuth}
       onAdminClick={null}
+      onLogout={() => logoutCurrentUser(setAuth)}
       onLoginClick={() => { setAuthMode('login'); setShowAuthForm(true); }}
       onRegisterClick={() => { setAuthMode('register'); setShowAuthForm(true); }}
     />
   );
 }
 
-function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick }) {
+function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onRegisterClick }) {
   const [services, setServices] = useState([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [staffs, setStaffs] = useState([]);
@@ -752,19 +770,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
                     </button>
                   )}
                   <button
-                    onClick={async () => {
-                      try {
-                        await fetch(`${API_BASE_URL}/api/logout`, { 
-                          method: 'POST', 
-                          credentials: 'include', 
-                          headers: { 
-                            'Accept': 'application/json',
-                            'X-XSRF-TOKEN': decodeURIComponent(getCookie('XSRF-TOKEN') || '')
-                          } 
-                        });
-                      } catch (e) {}
-                      setAuth(null);
-                    }}
+                    onClick={onLogout}
                     className="rounded-md border border-[#8d6a52] px-3 py-2 text-[#f7d9b2] hover:bg-[#2a1d2f]"
                   >
                     Đăng xuất
@@ -1115,7 +1121,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
   );
 }
 
-function AdminPanel({ auth, setAuth, page, setPage }) {
+function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
   const [services, setServices] = useState([]);
   const [staffs, setStaffs] = useState([]);
   const [appointments, setAppointments] = useState([]);
@@ -1856,7 +1862,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
             </button>
           ))}
           <button
-            onClick={() => setAuth(null)}
+            onClick={onLogout}
             className="mt-10 flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-bold text-rose-300 hover:bg-rose-500/10"
           >
             <span>🚪</span> Đăng xuất
