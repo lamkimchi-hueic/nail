@@ -160,6 +160,73 @@ function formatServicePrice(value) {
   return `${amount.toLocaleString('vi-VN')} đ`;
 }
 
+function PasswordVisibilityIcon({ visible }) {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {visible ? (
+        <>
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+          <circle cx="12" cy="12" r="3" />
+        </>
+      ) : (
+        <>
+          <path d="M10.7 5.2A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a18.7 18.7 0 0 1-3.1 4.2" />
+          <path d="M14.1 14.1A3 3 0 0 1 9.9 9.9" />
+          <path d="M6.6 6.6C3.7 8.5 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 4.4-1.1" />
+          <path d="M2 2l20 20" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function AlertBanner({ message, type = 'info', onClose }) {
+  if (!message?.text) return null;
+
+  const styles = {
+    success: 'border-emerald-400/50 bg-emerald-500/10 text-emerald-100',
+    error: 'border-rose-400/50 bg-rose-500/10 text-rose-100',
+    info: 'border-[#d5a56a]/50 bg-[#d5a56a]/10 text-[#f8e7d9]'
+  };
+  const label = type === 'success' ? 'Thành công' : type === 'error' ? 'Có lỗi' : 'Thông báo';
+
+  return (
+    <div className={`mt-3 flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${styles[type] || styles.info}`}>
+      <div>
+        <p className="font-black uppercase tracking-wide">{label}</p>
+        <p className="mt-1 leading-5">{message.text}</p>
+      </div>
+      {onClose && (
+        <button type="button" onClick={onClose} className="rounded-md px-2 py-1 font-black hover:bg-white/10" aria-label="Đóng thông báo">
+          x
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ConfirmDialog({ dialog, onCancel, onConfirm }) {
+  if (!dialog?.open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-[#d5a56a]/45 bg-[#140d1f] p-6 text-[#f8e7d9] shadow-2xl shadow-black/50">
+        <p className="text-xs font-bold uppercase text-[#d5a56a]">Xác nhận thao tác</p>
+        <h3 className="mt-1 text-2xl font-black text-[#f7d9b2]">{dialog.title || 'Bạn chắc chắn chứ?'}</h3>
+        <p className="mt-3 text-sm leading-6 text-[#d8c5c8]">{dialog.message}</p>
+        <div className="mt-6 flex gap-3">
+          <button type="button" onClick={onConfirm} className="flex-1 rounded-xl bg-rose-400 py-3 text-sm font-black uppercase text-[#2a1724] hover:bg-rose-300">
+            Xác nhận
+          </button>
+          <button type="button" onClick={onCancel} className="flex-1 rounded-xl border border-[#8d6a52] py-3 text-sm font-black uppercase text-[#f7d9b2] hover:bg-[#2a1d2f]">
+            Hủy
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BookingDialog({ dialog, onClose, onConfirm, isSubmitting }) {
   if (!dialog?.open) return null;
 
@@ -1127,8 +1194,18 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const [showUserPassword, setShowUserPassword] = useState(false);
   const [showEditUserPassword, setShowEditUserPassword] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [adminNotice, setAdminNotice] = useState({ type: '', text: '' });
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', onConfirm: null });
 
   const EXPIRED_TOKEN_MESSAGE = 'Vui lòng thoát và đăng nhập lại';
+
+  const notifyAdmin = (type, text) => {
+    setAdminNotice({ type, text });
+  };
+
+  const requestConfirm = (title, message, onConfirm) => {
+    setConfirmDialog({ open: true, title, message, onConfirm });
+  };
 
   const getAuthHeaders = (extraHeaders = {}) => {
     const authToken = localStorage.getItem('auth_token');
@@ -1344,13 +1421,17 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setUserMessage({ type: 'success', text: 'Thêm người dùng thành công' });
+        notifyAdmin('success', 'Thêm người dùng thành công');
         setUserForm({ name: '', username: '', email: '', phone: '', password: '', role: 'customer' });
         fetchUsers();
       } else {
-        setUserMessage({ type: 'error', text: data.message || 'Lỗi khi thêm người dùng' });
+        const text = data.message || 'Lỗi khi thêm người dùng';
+        setUserMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setUserMessage({ type: 'error', text: 'Lỗi kết nối' });
+      notifyAdmin('error', 'Lỗi kết nối khi thêm người dùng');
     }
   };
 
@@ -1365,18 +1446,23 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setUserMessage({ type: 'success', text: 'Cập nhật thành công' });
+        notifyAdmin('success', 'Cập nhật người dùng thành công');
         setEditingUserId(null);
         fetchUsers();
       } else {
-        setUserMessage({ type: 'error', text: data.message || 'Lỗi khi cập nhật' });
+        const text = data.message || 'Lỗi khi cập nhật';
+        setUserMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setUserMessage({ type: 'error', text: 'Lỗi kết nối' });
+      notifyAdmin('error', 'Lỗi kết nối khi cập nhật người dùng');
     }
   };
 
   const deleteUser = async (id) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa người dùng này?')) return;
+    requestConfirm('Xóa người dùng', 'Bạn có chắc chắn muốn xóa người dùng này? Thao tác này không thể hoàn tác.', async () => {
+      setConfirmDialog({ open: false, title: '', message: '', onConfirm: null });
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/users/${id}`, {
         method: 'DELETE',
@@ -1385,14 +1471,19 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setUserMessage({ type: 'success', text: 'Đã xóa người dùng thành công.' });
+        notifyAdmin('success', 'Đã xóa người dùng thành công');
         fetchUsers();
       } else {
-        setUserMessage({ type: 'error', text: data.message || 'Lỗi khi xóa người dùng.' });
+        const text = data.message || 'Lỗi khi xóa người dùng.';
+        setUserMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       console.error(error);
       setUserMessage({ type: 'error', text: 'Lỗi kết nối khi xóa người dùng.' });
+      notifyAdmin('error', 'Lỗi kết nối khi xóa người dùng');
     }
+    });
   };
 
   const startEditUser = (user) => {
@@ -1449,15 +1540,19 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setServiceFormMessage({ type: 'success', text: 'Thêm dịch vụ thành công' });
+        notifyAdmin('success', 'Thêm dịch vụ thành công');
         setFormData({ name: '', description: '', price: '', duration: '' });
         setImageFile(null);
         setUploadInputKey(prev => prev + 1);
         fetchServices();
       } else {
-        setServiceFormMessage({ type: 'error', text: data.message || 'Lỗi khi thêm dịch vụ' });
+        const text = data.message || 'Lỗi khi thêm dịch vụ';
+        setServiceFormMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setServiceFormMessage({ type: 'error', text: 'Lỗi kết nối' });
+      notifyAdmin('error', 'Lỗi kết nối khi thêm dịch vụ');
     }
   };
 
@@ -1477,25 +1572,39 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setServiceFormMessage({ type: 'success', text: 'Cập nhật thành công' });
+        notifyAdmin('success', 'Cập nhật dịch vụ thành công');
         setEditingServiceId(null);
         fetchServices();
       } else {
-        setServiceFormMessage({ type: 'error', text: data.message || 'Lỗi khi cập nhật' });
+        const text = data.message || 'Lỗi khi cập nhật';
+        setServiceFormMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setServiceFormMessage({ type: 'error', text: 'Lỗi kết nối' });
+      notifyAdmin('error', 'Lỗi kết nối khi cập nhật dịch vụ');
     }
   };
 
   const deleteService = async (id) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa dịch vụ này?')) return;
+    requestConfirm('Xóa dịch vụ', 'Bạn có chắc chắn muốn xóa dịch vụ này? Dịch vụ sẽ không còn hiển thị để đặt lịch.', async () => {
+      setConfirmDialog({ open: false, title: '', message: '', onConfirm: null });
     try {
       const res = await fetch(`${API_BASE_URL}/api/services/${id}`, {
         method: 'DELETE',
         headers: getAuthHeaders()
       });
-      if (res.ok) fetchServices();
-    } catch (error) { console.error(error); }
+      if (res.ok) {
+        notifyAdmin('success', 'Đã xóa dịch vụ');
+        fetchServices();
+      } else {
+        notifyAdmin('error', 'Lỗi khi xóa dịch vụ');
+      }
+    } catch (error) {
+      console.error(error);
+      notifyAdmin('error', 'Lỗi kết nối khi xóa dịch vụ');
+    }
+    });
   };
 
   const startEditService = (service) => {
@@ -1526,13 +1635,17 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setAppointmentMessage({ type: 'success', text: 'Thêm lịch hẹn thành công' });
+        notifyAdmin('success', 'Thêm lịch hẹn thành công');
         setNewAppointmentForm({ name: '', phone: '', staff_id: '1', appointment_date: '', appointment_time: '09:00', service_ids: [], notes: '' });
         fetchAppointments();
       } else {
-        setAppointmentMessage({ type: 'error', text: data.message || 'Lỗi khi thêm lịch hẹn' });
+        const text = data.message || 'Lỗi khi thêm lịch hẹn';
+        setAppointmentMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setAppointmentMessage({ type: 'error', text: 'Lỗi kết nối' });
+      notifyAdmin('error', 'Lỗi kết nối khi thêm lịch hẹn');
     } finally {
       setIsSubmittingAppointment(false);
     }
@@ -1565,22 +1678,36 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setEditingAppointmentId(null);
+        notifyAdmin('success', 'Cập nhật lịch hẹn thành công');
         fetchAppointments();
       } else {
-        alert(data.message || 'Lỗi khi cập nhật');
+        notifyAdmin('error', data.message || 'Lỗi khi cập nhật lịch hẹn');
       }
-    } catch (error) { console.error(error); }
+    } catch (error) {
+      console.error(error);
+      notifyAdmin('error', 'Lỗi kết nối khi cập nhật lịch hẹn');
+    }
   };
 
   const deleteAppointmentByAdmin = async (id) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa lịch hẹn này?')) return;
+    requestConfirm('Xóa lịch hẹn', 'Bạn có chắc chắn muốn xóa lịch hẹn này? Khách hàng sẽ không còn thấy lịch này.', async () => {
+      setConfirmDialog({ open: false, title: '', message: '', onConfirm: null });
     try {
       const res = await fetch(`${API_BASE_URL}/api/appointments/${id}/admin`, {
         method: 'DELETE',
         headers: getAuthHeaders()
       });
-      if (res.ok) fetchAppointments();
-    } catch (error) { console.error(error); }
+      if (res.ok) {
+        notifyAdmin('success', 'Đã xóa lịch hẹn');
+        fetchAppointments();
+      } else {
+        notifyAdmin('error', 'Lỗi khi xóa lịch hẹn');
+      }
+    } catch (error) {
+      console.error(error);
+      notifyAdmin('error', 'Lỗi kết nối khi xóa lịch hẹn');
+    }
+    });
   };
 
   const updateSalonSettings = async (e) => {
@@ -1596,12 +1723,16 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setSettingsMessage({ type: 'success', text: 'Cập nhật thành công' });
+        notifyAdmin('success', 'Cập nhật cài đặt salon thành công');
         fetchSalonSettings();
       } else {
-        setSettingsMessage({ type: 'error', text: data.message || 'Lỗi khi cập nhật' });
+        const text = data.message || 'Lỗi khi cập nhật';
+        setSettingsMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setSettingsMessage({ type: 'error', text: 'Lỗi kết nối' });
+      notifyAdmin('error', 'Lỗi kết nối khi cập nhật cài đặt');
     } finally {
       setSettingsSaving(false);
     }
@@ -1635,12 +1766,16 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setHeroImageMessage({ type: 'success', text: 'Tải ảnh lên thành công!' });
+        notifyAdmin('success', 'Tải ảnh lên thành công');
         fetchSalonSettings();
       } else {
-        setHeroImageMessage({ type: 'error', text: data.message || 'Lỗi khi tải ảnh.' });
+        const text = data.message || 'Lỗi khi tải ảnh.';
+        setHeroImageMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setHeroImageMessage({ type: 'error', text: 'Lỗi kết nối khi tải ảnh.' });
+      notifyAdmin('error', 'Lỗi kết nối khi tải ảnh');
     } finally {
       if (type === 'hero_image') setHeroImageUploading(false);
       setImageUploading(prev => ({ ...prev, [type]: false }));
@@ -1648,7 +1783,9 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   };
 
   const deleteSalonImage = async (url, type) => {
-    if (!url || !confirm('Bạn có chắc chắn muốn xóa ảnh này?')) return;
+    if (!url) return;
+    requestConfirm('Xóa ảnh', 'Bạn có chắc chắn muốn xóa ảnh này khỏi trang chủ?', async () => {
+      setConfirmDialog({ open: false, title: '', message: '', onConfirm: null });
     setHeroImageMessage({ type: '', text: '' });
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/salon-settings/delete-image`, {
@@ -1659,13 +1796,18 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setHeroImageMessage({ type: 'success', text: 'Đã xóa ảnh.' });
+        notifyAdmin('success', 'Đã xóa ảnh');
         fetchSalonSettings();
       } else {
-        setHeroImageMessage({ type: 'error', text: data.message || 'Lỗi khi xóa ảnh.' });
+        const text = data.message || 'Lỗi khi xóa ảnh.';
+        setHeroImageMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setHeroImageMessage({ type: 'error', text: 'Lỗi kết nối khi xóa ảnh.' });
+      notifyAdmin('error', 'Lỗi kết nối khi xóa ảnh');
     }
+    });
   };
 
   const updateWorkingHourValue = (day, field, value) => {
@@ -1678,6 +1820,16 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
 
   return (
     <div className="flex min-h-screen bg-[#08050c] text-[#f8e7d9]">
+      <ConfirmDialog
+        dialog={confirmDialog}
+        onCancel={() => setConfirmDialog({ open: false, title: '', message: '', onConfirm: null })}
+        onConfirm={() => confirmDialog.onConfirm?.()}
+      />
+      {adminNotice.text && (
+        <div className="fixed right-5 top-5 z-40 w-[min(420px,calc(100vw-40px))]">
+          <AlertBanner message={adminNotice} type={adminNotice.type} onClose={() => setAdminNotice({ type: '', text: '' })} />
+        </div>
+      )}
       <aside className="w-64 border-r border-[#7f5c44]/30 bg-[#140d1f] p-6">
         <div className="mb-10">
           <p className="text-xs font-black uppercase tracking-[0.3em] text-[#d5a56a]">Admin Panel</p>
@@ -1777,9 +1929,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                 Thêm dịch vụ
               </button>
               {serviceFormMessage.text && (
-                <p className={`mt-3 text-sm font-semibold ${serviceFormMessage.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
-                  {serviceFormMessage.text}
-                </p>
+                <AlertBanner message={serviceFormMessage} type={serviceFormMessage.type} onClose={() => setServiceFormMessage({ type: '', text: '' })} />
               )}
             </form>
 
@@ -2046,9 +2196,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
               </button>
 
               {appointmentMessage.text && (
-                <p className={`mt-3 text-sm font-semibold ${appointmentMessage.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
-                  {appointmentMessage.text}
-                </p>
+                <AlertBanner message={appointmentMessage} type={appointmentMessage.type} onClose={() => setAppointmentMessage({ type: '', text: '' })} />
               )}
             </form>
 
@@ -2355,9 +2503,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                   </p>
 
                   {heroImageMessage.text && (
-                    <p className={`mt-3 text-sm font-semibold ${heroImageMessage.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
-                      {heroImageMessage.text}
-                    </p>
+                    <AlertBanner message={heroImageMessage} type={heroImageMessage.type} onClose={() => setHeroImageMessage({ type: '', text: '' })} />
                   )}
 
                   {heroImageUploading && (
@@ -2515,9 +2661,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                 </button>
 
                 {settingsMessage.text && (
-                  <p className={`mt-3 text-sm font-semibold ${settingsMessage.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
-                    {settingsMessage.text}
-                  </p>
+                  <AlertBanner message={settingsMessage} type={settingsMessage.type} onClose={() => setSettingsMessage({ type: '', text: '' })} />
                 )}
               </form>
               </>
@@ -2570,10 +2714,11 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                   <button
                     type="button"
                     onClick={() => setShowUserPassword(!showUserPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#99878e] hover:text-[#f0c6bb]"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md text-[#99878e] hover:text-[#f0c6bb]"
                     title={showUserPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    aria-label={showUserPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   >
-                    {showUserPassword ? '👁️' : '👁️‍🗨️'}
+                    <PasswordVisibilityIcon visible={showUserPassword} />
                   </button>
                 </div>
                 <select
@@ -2589,9 +2734,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                 Thêm người dùng
               </button>
               {userMessage.text && (
-                <p className={`mt-3 text-sm font-semibold ${userMessage.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
-                  {userMessage.text}
-                </p>
+                <AlertBanner message={userMessage} type={userMessage.type} onClose={() => setUserMessage({ type: '', text: '' })} />
               )}
             </form>
 
@@ -2663,10 +2806,11 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                           <button
                             type="button"
                             onClick={() => setShowEditUserPassword(!showEditUserPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#99878e] hover:text-[#f0c6bb]"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md text-[#99878e] hover:text-[#f0c6bb]"
                             title={showEditUserPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                            aria-label={showEditUserPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                           >
-                            {showEditUserPassword ? '👁️' : '👁️‍🗨️'}
+                            <PasswordVisibilityIcon visible={showEditUserPassword} />
                           </button>
                         </div>
                         <select
@@ -2717,6 +2861,8 @@ function LoginRegister({ setAuth, initialMode, onBack }) {
   });
   const [message, setMessage] = useState({ type: '', text: '' });
   const [loading, setLoading] = useState(false);
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
+  const [showAuthPasswordConfirm, setShowAuthPasswordConfirm] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -2811,23 +2957,45 @@ function LoginRegister({ setAuth, initialMode, onBack }) {
               />
             </>
           )}
-          <input
-            type="password"
-            placeholder="Mật khẩu"
-            required
-            value={formData.password}
-            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
-          />
-          {mode === 'register' && (
+          <div className="relative">
             <input
-              type="password"
-              placeholder="Xác nhận mật khẩu"
+              type={showAuthPassword ? 'text' : 'password'}
+              placeholder="Mật khẩu"
               required
-              value={formData.password_confirmation}
-              onChange={(e) => setFormData({ ...formData, password_confirmation: e.target.value })}
-              className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 pr-12 text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
             />
+            <button
+              type="button"
+              onClick={() => setShowAuthPassword(!showAuthPassword)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md text-[#99878e] hover:text-[#f0c6bb]"
+              title={showAuthPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              aria-label={showAuthPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+            >
+              <PasswordVisibilityIcon visible={showAuthPassword} />
+            </button>
+          </div>
+          {mode === 'register' && (
+            <div className="relative">
+              <input
+                type={showAuthPasswordConfirm ? 'text' : 'password'}
+                placeholder="Xác nhận mật khẩu"
+                required
+                value={formData.password_confirmation}
+                onChange={(e) => setFormData({ ...formData, password_confirmation: e.target.value })}
+                className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 pr-12 text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
+              />
+              <button
+                type="button"
+                onClick={() => setShowAuthPasswordConfirm(!showAuthPasswordConfirm)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md text-[#99878e] hover:text-[#f0c6bb]"
+                title={showAuthPasswordConfirm ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                aria-label={showAuthPasswordConfirm ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              >
+                <PasswordVisibilityIcon visible={showAuthPasswordConfirm} />
+              </button>
+            </div>
           )}
 
           <button
@@ -2839,9 +3007,7 @@ function LoginRegister({ setAuth, initialMode, onBack }) {
           </button>
 
           {message.text && (
-            <p className={`text-center text-xs font-bold ${message.type === 'success' ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {message.text}
-            </p>
+            <AlertBanner message={message} type={message.type} onClose={() => setMessage({ type: '', text: '' })} />
           )}
         </form>
 
