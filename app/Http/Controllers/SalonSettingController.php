@@ -45,6 +45,14 @@ class SalonSettingController extends Controller
                 }
             }
 
+            if (is_string($value) && str_starts_with($value, '"')) {
+                $decoded = json_decode($value, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_string($decoded)) {
+                    $normalized[$key] = $decoded;
+                    continue;
+                }
+            }
+
             $normalized[$key] = $value;
         }
 

@@ -1169,11 +1169,13 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
   const [appointments, setAppointments] = useState([]);
   const [formData, setFormData] = useState({ name: '', description: '', price: '', duration: '' });
   const [imageFile, setImageFile] = useState(null);
+  const [serviceImagePreview, setServiceImagePreview] = useState('');
   const [uploadInputKey, setUploadInputKey] = useState(0);
   const [serviceFormMessage, setServiceFormMessage] = useState({ type: '', text: '' });
   const [editingServiceId, setEditingServiceId] = useState(null);
   const [editServiceForm, setEditServiceForm] = useState({ name: '', description: '', price: '', duration: '' });
   const [editServiceImageFile, setEditServiceImageFile] = useState(null);
+  const [editServiceImagePreview, setEditServiceImagePreview] = useState('');
   const [editServiceImageKey, setEditServiceImageKey] = useState(0);
   const [settingsForm, setSettingsForm] = useState({
     salon_name: '',
@@ -1275,6 +1277,62 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
       ...extraHeaders
     };
   };
+
+  const validateServiceImage = (file) => {
+    if (!file) return true;
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setServiceFormMessage({ type: 'error', text: 'Chỉ chấp nhận ảnh JPG, PNG hoặc WEBP.' });
+      return false;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setServiceFormMessage({ type: 'error', text: 'Ảnh dịch vụ tối đa 4MB.' });
+      return false;
+    }
+    return true;
+  };
+
+  const handleServiceImageChange = (file) => {
+    if (!validateServiceImage(file)) {
+      setImageFile(null);
+      setUploadInputKey(prev => prev + 1);
+      return;
+    }
+    setServiceFormMessage({ type: '', text: '' });
+    setImageFile(file || null);
+  };
+
+  const handleEditServiceImageChange = (file) => {
+    if (!validateServiceImage(file)) {
+      setEditServiceImageFile(null);
+      setEditServiceImageKey(prev => prev + 1);
+      return;
+    }
+    setServiceFormMessage({ type: '', text: '' });
+    setEditServiceImageFile(file || null);
+  };
+
+  useEffect(() => {
+    if (!imageFile) {
+      setServiceImagePreview('');
+      return undefined;
+    }
+
+    const previewUrl = URL.createObjectURL(imageFile);
+    setServiceImagePreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [imageFile]);
+
+  useEffect(() => {
+    if (!editServiceImageFile) {
+      setEditServiceImagePreview('');
+      return undefined;
+    }
+
+    const previewUrl = URL.createObjectURL(editServiceImageFile);
+    setEditServiceImagePreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [editServiceImageFile]);
 
   useEffect(() => {
     if (page === 'dashboard') {
@@ -1707,6 +1765,9 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
 
   const startEditService = (service) => {
     setEditingServiceId(service.id);
+    setEditServiceImageFile(null);
+    setEditServiceImagePreview('');
+    setEditServiceImageKey(prev => prev + 1);
     setEditServiceForm({
       name: service.name,
       description: service.description || '',
@@ -1998,44 +2059,69 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
             <h2 className="mb-6 text-3xl font-black text-[#f7dfc2]">Quản lý dịch vụ</h2>
 
             <form onSubmit={addService} className="mb-8 rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
-              <div className="grid grid-cols-2 gap-4">
-                <input
-                  type="text"
-                  placeholder="Tên dịch vụ"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                />
-                <input
-                  type="text"
-                  placeholder="Giá (k)"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                  className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                />
-                <input
-                  type="text"
-                  placeholder="Thời lượng (phút)"
-                  value={formData.duration}
-                  onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
-                  className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                />
-                <input
-                  key={uploadInputKey}
-                  type="file"
-                  accept="image/jpeg,image/png,image/jpg,image/webp"
-                  onChange={(e) => setImageFile(e.target.files[0] || null)}
-                  className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-sm text-[#99878e] outline-none"
-                />
+              <div className="grid gap-5 lg:grid-cols-[1fr_220px]">
+                <div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <input
+                      type="text"
+                      placeholder="Tên dịch vụ"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none ring-[#d8a56c] focus:ring"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Giá (k)"
+                      value={formData.price}
+                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                      className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none ring-[#d8a56c] focus:ring"
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="Thời lượng (phút)"
+                      value={formData.duration}
+                      onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                      className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none ring-[#d8a56c] focus:ring"
+                    />
+                  </div>
+                  <textarea
+                    placeholder="Mô tả dịch vụ"
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="mt-4 min-h-24 w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none ring-[#d8a56c] focus:ring"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="service-image-input" className="mb-2 block text-xs font-black uppercase tracking-wide text-[#d8a56c]">
+                    Ảnh dịch vụ
+                  </label>
+                  <div className="mb-3 aspect-[4/3] overflow-hidden rounded-lg border border-[#6f5262] bg-[#0f0a17]">
+                    {serviceImagePreview ? (
+                      <img src={serviceImagePreview} alt="Ảnh dịch vụ" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-sm font-bold text-[#8d7b82]">Chưa chọn ảnh</div>
+                    )}
+                  </div>
+                  <input
+                    id="service-image-input"
+                    key={uploadInputKey}
+                    type="file"
+                    accept="image/jpeg,image/png,image/jpg,image/webp"
+                    onChange={(e) => handleServiceImageChange(e.target.files[0] || null)}
+                    className="w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-xs text-[#cbb9bb] outline-none file:mr-3 file:rounded-md file:border-0 file:bg-[#d8a56c] file:px-3 file:py-2 file:font-bold file:text-[#2a1724]"
+                  />
+                </div>
               </div>
-              <textarea
-                placeholder="Mô tả dịch vụ"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="mt-4 w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-              />
-              <button type="submit" className="mt-4 rounded-md bg-[#f0c6bb] px-5 py-2 font-black uppercase tracking-wide text-[#2a1724] hover:bg-[#ffd9cf]">
-                Thêm dịch vụ
+
+              <button
+                type="submit"
+                disabled={adminActionLoading === 'Đang thêm dịch vụ...'}
+                className="mt-4 rounded-md bg-[#f0c6bb] px-5 py-3 font-black uppercase tracking-wide text-[#2a1724] hover:bg-[#ffd9cf] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {adminActionLoading === 'Đang thêm dịch vụ...' ? 'Đang thêm...' : 'Thêm dịch vụ'}
               </button>
               {serviceFormMessage.text && (
                 <AlertBanner message={serviceFormMessage} type={serviceFormMessage.type} onClose={() => setServiceFormMessage({ type: '', text: '' })} />
@@ -2063,29 +2149,55 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
 
                   {editingServiceId === service.id && (
                     <div className="mt-4 rounded-lg border border-[#6f5262] bg-[#0f0a17] p-4">
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          value={editServiceForm.name}
-                          onChange={(e) => setEditServiceForm({ ...editServiceForm, name: e.target.value })}
-                          className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                        />
-                        <input
-                          type="text"
-                          value={editServiceForm.price}
-                          onChange={(e) => setEditServiceForm({ ...editServiceForm, price: e.target.value })}
-                          className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                        />
+                      <div className="grid gap-4 md:grid-cols-[1fr_160px]">
+                        <div>
+                          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                            <input
+                              type="text"
+                              value={editServiceForm.name}
+                              onChange={(e) => setEditServiceForm({ ...editServiceForm, name: e.target.value })}
+                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              value={editServiceForm.price}
+                              onChange={(e) => setEditServiceForm({ ...editServiceForm, price: e.target.value })}
+                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                            />
+                            <input
+                              type="number"
+                              min="1"
+                              value={editServiceForm.duration}
+                              onChange={(e) => setEditServiceForm({ ...editServiceForm, duration: e.target.value })}
+                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring md:col-span-2"
+                            />
+                          </div>
+                          <textarea
+                            value={editServiceForm.description}
+                            onChange={(e) => setEditServiceForm({ ...editServiceForm, description: e.target.value })}
+                            className="mt-2 min-h-20 w-full rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                          />
+                        </div>
+                        <div>
+                          <div className="mb-2 aspect-[4/3] overflow-hidden rounded-lg border border-[#6f5262] bg-[#120b1c]">
+                            {(editServiceImagePreview || resolveServiceImage(service)) ? (
+                              <img src={editServiceImagePreview || resolveServiceImage(service)} alt={service.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-xs font-bold text-[#8d7b82]">Chưa có ảnh</div>
+                            )}
+                          </div>
+                          <input
+                            key={editServiceImageKey}
+                            type="file"
+                            accept="image/jpeg,image/png,image/jpg,image/webp"
+                            onChange={(e) => handleEditServiceImageChange(e.target.files[0] || null)}
+                            className="w-full text-xs text-[#99878e] file:mr-2 file:rounded-md file:border-0 file:bg-[#d8a56c] file:px-2 file:py-1 file:font-bold file:text-[#2a1724]"
+                          />
+                        </div>
                       </div>
-                      <input
-                        key={editServiceImageKey}
-                        type="file"
-                        accept="image/jpeg,image/png,image/jpg,image/webp"
-                        onChange={(e) => setEditServiceImageFile(e.target.files[0] || null)}
-                        className="mt-2 text-xs text-[#99878e]"
-                      />
                       <div className="mt-3 flex gap-2">
-                        <button onClick={() => updateService(service.id)} className="rounded-md bg-[#f0c6bb] px-4 py-2 text-xs font-bold uppercase text-[#2a1724]">Lưu</button>
+                        <button onClick={() => updateService(service.id)} disabled={adminActionLoading === 'Đang cập nhật dịch vụ...'} className="rounded-md bg-[#f0c6bb] px-4 py-2 text-xs font-bold uppercase text-[#2a1724] disabled:opacity-60">Lưu</button>
                         <button onClick={() => setEditingServiceId(null)} className="rounded-md border border-[#8d6a52] px-4 py-2 text-xs font-bold uppercase text-[#f3d5b8]">Hủy</button>
                       </div>
                     </div>
