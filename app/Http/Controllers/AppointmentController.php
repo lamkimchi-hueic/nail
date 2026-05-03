@@ -49,6 +49,21 @@ class AppointmentController extends Controller
             return $requestedStaffId;
         }
 
+        if (!Staff::query()->exists()) {
+            $user = User::query()
+                ->where('role', 'admin')
+                ->orWhereHas('roles', fn($query) => $query->where('name', 'admin'))
+                ->orderBy('id')
+                ->first() ?: User::query()->orderBy('id')->first();
+
+            Staff::query()->create([
+                'name' => $user?->name ?: $user?->username ?: 'Nhân viên mặc định',
+                'specialty' => 'Nail',
+            ]);
+
+            Cache::forget('public_staffs');
+        }
+
         return Staff::query()->orderBy('id')->value('id');
     }
 

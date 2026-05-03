@@ -3,18 +3,41 @@
 namespace App\Http\Controllers;
 
 use App\Models\Staff;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 
 class StaffController extends Controller
 {
+    private function ensureDefaultStaffExists(): void
+    {
+        if (Staff::query()->exists()) {
+            return;
+        }
+
+        $user = User::query()
+            ->where('role', 'admin')
+            ->orWhereHas('roles', fn($query) => $query->where('name', 'admin'))
+            ->orderBy('id')
+            ->first() ?: User::query()->orderBy('id')->first();
+
+        Staff::query()->create([
+            'name' => $user?->name ?: $user?->username ?: 'Nhân viên mặc định',
+            'specialty' => 'Nail',
+        ]);
+
+        Cache::forget('public_staffs');
+    }
+
     /**
      * Get all staff members
      */
     public function index(Request $request)
     {
         try {
+            $this->ensureDefaultStaffExists();
+
             if (!$request->has('search') && !$request->has('per_page')) {
                 $staff = Cache::remember('public_staffs', now()->addMinutes(10), function () {
                     return Staff::orderBy('name')->get();
