@@ -4,14 +4,50 @@ namespace App\Support;
 
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class SpatieRoleSetup
 {
     public static function ensure(): void
     {
-        app()['cache']->forget('spatie.permission.cache');
+        $permissions = self::permissions();
+        $customerPermissions = self::customerPermissions();
 
-        $permissions = [
+        $adminRole = Role::where('name', 'admin')->where('guard_name', 'web')->first();
+        $customerRole = Role::where('name', 'customer')->where('guard_name', 'web')->first();
+        $permissionCount = Permission::where('guard_name', 'web')
+            ->whereIn('name', $permissions)
+            ->count();
+
+        if (
+            $adminRole
+            && $customerRole
+            && $permissionCount === count($permissions)
+            && $customerRole->permissions()->whereIn('name', $customerPermissions)->count() === count($customerPermissions)
+        ) {
+            return;
+        }
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        foreach ($permissions as $permission) {
+            Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
+        }
+
+        $adminRole = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        if ($adminRole->permissions()->count() !== count($permissions)) {
+            $adminRole->syncPermissions(Permission::where('guard_name', 'web')->get());
+        }
+
+        $customerRole = Role::firstOrCreate(['name' => 'customer', 'guard_name' => 'web']);
+        if ($customerRole->permissions()->whereIn('name', $customerPermissions)->count() !== count($customerPermissions)) {
+            $customerRole->syncPermissions($customerPermissions);
+        }
+    }
+
+    private static function permissions(): array
+    {
+        return [
             'view_services',
             'create_services',
             'edit_services',
@@ -32,20 +68,15 @@ class SpatieRoleSetup
             'edit_settings',
             'manage_staff',
         ];
+    }
 
-        foreach ($permissions as $permission) {
-            Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
-        }
-
-        $adminRole = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
-        $adminRole->syncPermissions(Permission::where('guard_name', 'web')->get());
-
-        $customerRole = Role::firstOrCreate(['name' => 'customer', 'guard_name' => 'web']);
-        $customerRole->syncPermissions([
+    private static function customerPermissions(): array
+    {
+        return [
             'view_services',
             'create_appointments',
             'view_appointments',
             'cancel_appointments',
-        ]);
+        ];
     }
 }

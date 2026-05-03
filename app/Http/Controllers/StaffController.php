@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Staff;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 
 class StaffController extends Controller
@@ -14,6 +15,17 @@ class StaffController extends Controller
     public function index(Request $request)
     {
         try {
+            if (!$request->has('search') && !$request->has('per_page')) {
+                $staff = Cache::remember('public_staffs', now()->addMinutes(10), function () {
+                    return Staff::orderBy('name')->get();
+                });
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $staff
+                ]);
+            }
+
             $query = Staff::query();
 
             // Search by name or specialty
@@ -87,6 +99,7 @@ class StaffController extends Controller
             ]);
 
             $staff = Staff::create($validated);
+            Cache::forget('public_staffs');
 
             return response()->json([
                 'success' => true,
@@ -122,6 +135,7 @@ class StaffController extends Controller
             ]);
 
             $staff->update($validated);
+            Cache::forget('public_staffs');
 
             return response()->json([
                 'success' => true,
@@ -170,6 +184,7 @@ class StaffController extends Controller
             }
 
             $staff->delete();
+            Cache::forget('public_staffs');
 
             return response()->json([
                 'success' => true,

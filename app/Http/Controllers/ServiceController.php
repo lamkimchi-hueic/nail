@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Service;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
 class ServiceController extends Controller
@@ -25,9 +26,11 @@ class ServiceController extends Controller
     public function index()
     {
         try {
-            $services = Service::where('is_active', true)->get()->map(function (Service $service) {
-                $service->image_url = $this->toPublicUrl($service->image);
-                return $service;
+            $services = Cache::remember('public_services', now()->addMinutes(10), function () {
+                return Service::where('is_active', true)->get()->map(function (Service $service) {
+                    $service->image_url = $this->toPublicUrl($service->image);
+                    return $service;
+                });
             });
             return response()->json([
                 'success' => true,
@@ -81,6 +84,7 @@ class ServiceController extends Controller
             $validated['is_active'] = $validated['is_active'] ?? true;
 
             $service = Service::create($validated);
+            Cache::forget('public_services');
             $service->image_url = $this->toPublicUrl($service->image);
 
             return response()->json([
@@ -126,6 +130,7 @@ class ServiceController extends Controller
             }
 
             $service->update($validated);
+            Cache::forget('public_services');
             $service->image_url = $this->toPublicUrl($service->image);
 
             return response()->json([
@@ -164,6 +169,7 @@ class ServiceController extends Controller
             }
 
             $service->delete();
+            Cache::forget('public_services');
 
             return response()->json([
                 'success' => true,
