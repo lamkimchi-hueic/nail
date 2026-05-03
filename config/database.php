@@ -3,6 +3,28 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+$databaseUrl = env('DATABASE_URL') ?: env('DB_URL');
+$databaseUrlParts = $databaseUrl ? parse_url($databaseUrl) : [];
+$databaseUrlQuery = [];
+if (!empty($databaseUrlParts['query'])) {
+    parse_str($databaseUrlParts['query'], $databaseUrlQuery);
+}
+
+$pgsqlHost = env('DB_HOST', $databaseUrlParts['host'] ?? '127.0.0.1');
+$neonEndpointId = env('DB_ENDPOINT_ID');
+if (!$neonEndpointId && is_string($pgsqlHost) && str_contains($pgsqlHost, 'neon.tech')) {
+    $firstHostPart = explode('.', $pgsqlHost)[0] ?? '';
+    $neonEndpointId = str_ends_with($firstHostPart, '-pooler')
+        ? substr($firstHostPart, 0, -7)
+        : $firstHostPart;
+}
+
+$pgsqlHostForDsn = $pgsqlHost;
+if ($neonEndpointId && is_string($pgsqlHost) && str_contains($pgsqlHost, 'neon.tech') && !str_contains($pgsqlHost, ';options=')) {
+    // Neon needs the endpoint parameter when the server's libpq does not support SNI.
+    $pgsqlHostForDsn = "{$pgsqlHost};options='endpoint={$neonEndpointId}'";
+}
+
 return [
 
     /*
@@ -86,17 +108,17 @@ return [
 
         'pgsql' => [
             'driver' => 'pgsql',
-            'url' => env('DATABASE_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
-            'port' => env('DB_PORT', '5432'),
-            'database' => env('DB_DATABASE', 'neondb'),
-            'username' => env('DB_USERNAME', 'neondb_owner'),
-            'password' => env('DB_PASSWORD', ''),
+            'url' => null,
+            'host' => $pgsqlHostForDsn,
+            'port' => env('DB_PORT', $databaseUrlParts['port'] ?? '5432'),
+            'database' => env('DB_DATABASE', isset($databaseUrlParts['path']) ? ltrim(rawurldecode($databaseUrlParts['path']), '/') : 'neondb'),
+            'username' => env('DB_USERNAME', isset($databaseUrlParts['user']) ? rawurldecode($databaseUrlParts['user']) : 'neondb_owner'),
+            'password' => env('DB_PASSWORD', isset($databaseUrlParts['pass']) ? rawurldecode($databaseUrlParts['pass']) : ''),
             'charset' => 'utf8',
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            'sslmode' => 'require',
+            'sslmode' => env('DB_SSLMODE', $databaseUrlQuery['sslmode'] ?? 'require'),
             'options' => [],
         ],
 
