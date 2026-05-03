@@ -843,8 +843,13 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
             <div className="relative h-full min-h-[520px]">
               {salonSettings.hero_image ? (
                 <>
-                  <img src={resolveImageUrl(salonSettings.hero_image)} alt="Hero" className="absolute inset-0 h-full w-full object-cover" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-[#0b0712]/95 via-[#0b0712]/70 to-transparent" />
+                  <img
+                    src={resolveImageUrl(salonSettings.hero_image)}
+                    alt="Hero"
+                    className="absolute inset-0 h-full w-full object-cover object-center [image-rendering:auto]"
+                  />
+                  <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(11,7,18,0.82)_0%,rgba(11,7,18,0.52)_46%,rgba(11,7,18,0.12)_100%)]" />
+                  <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-[#0b0712]/45 to-transparent" />
                 </>
               ) : (
                 <>
@@ -855,12 +860,12 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
               )}
 
               <div className="relative z-10 flex h-full min-h-[520px] flex-col justify-center px-6 py-8 md:px-16 md:py-10">
-                <p className="mb-4 text-base uppercase tracking-[0.4em] text-[#d5a56a] font-bold">{salonSettings.salon_name || 'Luxury Nails Spa'}</p>
-                <h1 className="mb-6 text-4xl font-black leading-tight text-[#f8e7d9] md:text-6xl xl:text-7xl">
+                <p className="mb-4 text-base font-bold uppercase tracking-[0.4em] text-[#e5b776] drop-shadow-[0_2px_10px_rgba(0,0,0,0.75)]">{salonSettings.salon_name || 'Luxury Nails Spa'}</p>
+                <h1 className="mb-6 text-4xl font-black leading-tight text-[#fff0e4] drop-shadow-[0_4px_18px_rgba(0,0,0,0.70)] md:text-6xl xl:text-7xl">
                   Nâng tầm vẻ đẹp
-                  <span className="block text-[#f4c0c4]">đôi tay bạn</span>
+                  <span className="block text-[#ffcdd2]">đôi tay bạn</span>
                 </h1>
-                <p className="max-w-xl text-base font-medium leading-7 text-[#e8d0c7] md:text-lg">
+                <p className="max-w-xl text-base font-semibold leading-7 text-[#f2dfd7] drop-shadow-[0_2px_10px_rgba(0,0,0,0.70)] md:text-lg">
                   Chọn dịch vụ, ngày giờ và gửi lịch hẹn trong vài thao tác. Tài khoản customer có thể theo dõi lịch đã đặt ngay bên dưới.
                 </p>
               </div>
@@ -2695,7 +2700,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                       <img
                         src={resolveHeroImage(settingsForm.hero_image)}
                         alt="Current Hero"
-                        className="max-h-40 max-w-xs rounded-lg object-cover"
+                        className="aspect-[16/9] w-full max-w-xl rounded-lg border border-[#8d6a52]/35 object-cover"
                       />
                       <button
                         type="button"
@@ -2711,7 +2716,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                     <input
                       ref={heroFileInputRef}
                       type="file"
-                      accept="image/jpeg,image/png,image/jpg,image/gif"
+                      accept="image/jpeg,image/png,image/jpg,image/gif,image/webp"
                       onChange={uploadHeroImage}
                       disabled={heroImageUploading}
                       className="hidden"
@@ -2727,7 +2732,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                   </div>
                   
                   <p className="mt-2 text-xs text-[#99878e]">
-                    Chấp nhận: JPEG, PNG, GIF (Tối đa 5MB)
+                    Chấp nhận: JPEG, PNG, GIF, WEBP. Nên dùng ảnh ngang tối thiểu 1920x1080 để banner không bị vỡ hoặc mờ khi kéo rộng.
                   </p>
 
                   {heroImageMessage.text && (
