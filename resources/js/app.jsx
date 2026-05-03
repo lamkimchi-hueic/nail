@@ -113,6 +113,7 @@ function getLocalDateTimeParts(dateTimeValue) {
 
 function resolveImageUrl(path) {
   if (!path) return '';
+  if (path.startsWith('data:image/')) return path;
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
   if (path.startsWith('/storage/')) return `${API_BASE_URL}${path}`;
   return `${API_BASE_URL}/storage/${path}`;
@@ -125,6 +126,7 @@ function resolveServiceImage(service) {
 
 function resolveHeroImage(url) {
   if (!url) return '';
+  if (url.startsWith('data:image/')) return url;
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   if (url.startsWith('/')) return `${API_BASE_URL}${url}`;
   return `${API_BASE_URL}/${url}`;
@@ -1567,8 +1569,14 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
     try {
       const res = await fetch(`${API_BASE_URL}/api/services`);
       const data = await res.json();
-      if (res.ok) setServices(data.data || data);
-    } catch (error) { console.error(error); }
+      if (res.ok) {
+        const payload = data.data || data;
+        setServices(Array.isArray(payload) ? payload : []);
+      }
+    } catch (error) {
+      console.error(error);
+      setServices([]);
+    }
   };
 
   const fetchStaffs = async () => {
@@ -1585,8 +1593,22 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
         headers: getAuthHeaders()
       });
       const data = await res.json();
-      if (res.ok) setAppointments(data.data || data);
-    } catch (error) { console.error(error); }
+      if (res.ok) {
+        const payload = data.data || data;
+        setAppointments(Array.isArray(payload) ? payload : []);
+        return;
+      }
+
+      const text = data?.message || 'Không thể tải danh sách lịch hẹn';
+      setAppointments([]);
+      setAppointmentMessage({ type: 'error', text });
+      notifyAdmin('error', text);
+    } catch (error) {
+      console.error(error);
+      setAppointments([]);
+      setAppointmentMessage({ type: 'error', text: 'Lỗi kết nối khi tải lịch hẹn' });
+      notifyAdmin('error', 'Lỗi kết nối khi tải lịch hẹn');
+    }
   };
 
   const addService = async (e) => {
@@ -1643,6 +1665,8 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
         setServiceFormMessage({ type: 'success', text: 'Cập nhật thành công' });
         notifyAdmin('success', 'Cập nhật dịch vụ thành công');
         setEditingServiceId(null);
+        setEditServiceImageFile(null);
+        setEditServiceImageKey(prev => prev + 1);
         fetchServices();
       } else {
         const text = data.message || 'Lỗi khi cập nhật';
@@ -1999,7 +2023,8 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                 <input
                   key={uploadInputKey}
                   type="file"
-                  onChange={(e) => setImageFile(e.target.files[0])}
+                  accept="image/jpeg,image/png,image/jpg,image/webp"
+                  onChange={(e) => setImageFile(e.target.files[0] || null)}
                   className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-sm text-[#99878e] outline-none"
                 />
               </div>
@@ -2018,7 +2043,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
             </form>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {services.map((service) => (
+              {(Array.isArray(services) ? services : []).map((service) => (
                 <div key={service.id} className="rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
                   <div className="flex items-center justify-between">
                     <div className="flex gap-4">
@@ -2053,8 +2078,10 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                         />
                       </div>
                       <input
+                        key={editServiceImageKey}
                         type="file"
-                        onChange={(e) => setEditServiceImageFile(e.target.files[0])}
+                        accept="image/jpeg,image/png,image/jpg,image/webp"
+                        onChange={(e) => setEditServiceImageFile(e.target.files[0] || null)}
                         className="mt-2 text-xs text-[#99878e]"
                       />
                       <div className="mt-3 flex gap-2">
@@ -2184,7 +2211,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                     <p className="text-xs font-semibold uppercase tracking-wide text-[#d8a56c]">Dịch vụ</p>
                     <p className="mt-1 text-xs text-[#cbb9bb]">
                       {newAppointmentForm.service_ids.length > 0
-                        ? services.filter(s => newAppointmentForm.service_ids.includes(s.id)).map(s => s.name).join(', ')
+                        ? (Array.isArray(services) ? services : []).filter(s => newAppointmentForm.service_ids.includes(s.id)).map(s => s.name).join(', ')
                         : 'Chọn dịch vụ'}
                     </p>
                   </button>
@@ -2192,7 +2219,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                   {isNewAptServicePickerOpen && (
                     <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border border-[#8d6a52] bg-[#1a0f27] p-3 shadow-xl">
                       <div className="max-h-48 space-y-2 overflow-auto pr-1">
-                        {services.map((service) => {
+                        {(Array.isArray(services) ? services : []).map((service) => {
                           const checked = newAppointmentForm.service_ids.includes(service.id);
                           return (
                             <label
@@ -2285,14 +2312,19 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
             </form>
 
             <div className="space-y-4">
-              {appointments.map((apt) => (
+              {appointments.length === 0 && (
+                <div className="rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5 text-sm text-[#c7b4b6]">
+                  Chưa có lịch hẹn nào để hiển thị.
+                </div>
+              )}
+              {(Array.isArray(appointments) ? appointments : []).map((apt) => (
                 <div key={apt.id} className="rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
                   <div className="flex items-center justify-between">
                   <div>
                     <p className="text-lg font-bold text-[#f7dfc2]">{apt.user?.name || apt.customer_name || apt.name || 'N/A'}</p>
                     <p className="text-sm text-[#f3d5b8] mb-1">{apt.user?.phone || apt.phone}</p>
                     <p className="text-sm text-[#c7b4b6] mb-1">
-                      Dịch vụ: {apt.services?.map(s => s.name).join(', ') || 'N/A'}
+                      Dịch vụ: {(Array.isArray(apt.services) ? apt.services : []).map(s => s.name).join(', ') || 'N/A'}
                     </p>
                     <p className="text-xs text-[#c7b4b6] opacity-70">{new Date(apt.appointment_date).toLocaleString('vi-VN')}</p>
                   </div>
@@ -2341,7 +2373,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                             <p className="text-xs font-semibold uppercase tracking-wide text-[#d8a56c]">Dịch vụ</p>
                             <p className="mt-1 text-xs text-[#cbb9bb]">
                               {editAppointmentForm.service_ids.length > 0
-                                ? services.filter(s => editAppointmentForm.service_ids.includes(s.id)).map(s => s.name).join(', ')
+                                ? (Array.isArray(services) ? services : []).filter(s => editAppointmentForm.service_ids.includes(s.id)).map(s => s.name).join(', ')
                                 : 'Chọn dịch vụ'}
                             </p>
                           </button>
@@ -2349,7 +2381,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                           {isEditAptServicePickerOpen && (
                             <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border border-[#8d6a52] bg-[#1a0f27] p-3 shadow-xl">
                               <div className="max-h-48 space-y-2 overflow-auto pr-1">
-                                {services.map((service) => {
+                                {(Array.isArray(services) ? services : []).map((service) => {
                                   const checked = editAppointmentForm.service_ids.includes(service.id);
                                   return (
                                     <label

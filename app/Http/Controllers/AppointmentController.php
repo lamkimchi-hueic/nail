@@ -161,10 +161,15 @@ class AppointmentController extends Controller
     public function index(Request $request)
     {
         try {
+            SpatieRoleSetup::ensure();
+
             $this->authorize('viewAny', Appointment::class);
 
-            $query = Appointment::with(['user', 'staff', 'services'])
-                ->where('appointment_date', '>=', Carbon::now());
+            $query = Appointment::with(['user', 'staff', 'services']);
+
+            if ($request->boolean('upcoming')) {
+                $query->where('appointment_date', '>=', Carbon::now());
+            }
 
             // Filter by date range
             if ($request->has('start_date') && $request->has('end_date')) {

@@ -12,6 +12,18 @@ class SalonSettingController extends Controller
     private const CACHE_KEY = 'salon_settings';
     private const CACHE_DURATION = 86400; // 24 hours
 
+    private function imageToDataUrl(\Illuminate\Http\UploadedFile $file): string
+    {
+        $mimeType = $file->getMimeType() ?: 'image/jpeg';
+        $contents = file_get_contents($file->getRealPath());
+
+        if ($contents === false) {
+            throw new \RuntimeException('Không thể đọc file ảnh đã tải lên.');
+        }
+
+        return 'data:' . $mimeType . ';base64,' . base64_encode($contents);
+    }
+
     private function loadPersistedSettings(): array
     {
         $settings = SalonSetting::query()->pluck('value', 'key')->toArray();
@@ -184,15 +196,7 @@ class SalonSettingController extends Controller
 
             $type = $request->input('type');
             $file = $request->file('image');
-
-            $filename = $type . '_' . time() . '.' . $file->getClientOriginalExtension();
-            $path = $file->storeAs('salon-images', $filename, 'public');
-
-            if (!$path) {
-                throw new \Exception("Không thể lưu file vào đĩa.");
-            }
-
-            $imageUrl = '/storage/' . $path;
+            $imageUrl = $this->imageToDataUrl($file);
             $persisted = $this->loadPersistedSettings();
 
             if ($type === 'gallery') {
@@ -200,7 +204,7 @@ class SalonSettingController extends Controller
                 $gallery[] = $imageUrl;
                 $persisted['gallery_images'] = $gallery;
             } else {
-                if (isset($persisted[$type])) {
+                if (isset($persisted[$type]) && !str_starts_with((string) $persisted[$type], 'data:image/')) {
                     $oldPath = str_replace('/storage/', '', $persisted[$type]);
                     if (Storage::disk('public')->exists($oldPath)) {
                         Storage::disk('public')->delete($oldPath);
@@ -248,10 +252,13 @@ class SalonSettingController extends Controller
 
             $type = $request->input('type');
             $url = $request->input('url');
-            $path = str_replace('/storage/', '', $url);
 
-            if (Storage::disk('public')->exists($path)) {
-                Storage::disk('public')->delete($path);
+            if (!str_starts_with($url, 'data:image/')) {
+                $path = str_replace('/storage/', '', $url);
+
+                if (Storage::disk('public')->exists($path)) {
+                    Storage::disk('public')->delete($path);
+                }
             }
 
             $persisted = $this->loadPersistedSettings();

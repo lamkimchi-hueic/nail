@@ -15,11 +15,27 @@ class ServiceController extends Controller
             return null;
         }
 
+        if (str_starts_with($path, 'data:image/')) {
+            return $path;
+        }
+
         if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
             return $path;
         }
 
         return asset('storage/' . ltrim($path, '/'));
+    }
+
+    private function imageToDataUrl(\Illuminate\Http\UploadedFile $file): string
+    {
+        $mimeType = $file->getMimeType() ?: 'image/jpeg';
+        $contents = file_get_contents($file->getRealPath());
+
+        if ($contents === false) {
+            throw new \RuntimeException('Không thể đọc file ảnh đã tải lên.');
+        }
+
+        return 'data:' . $mimeType . ';base64,' . base64_encode($contents);
     }
 
     // Get all services
@@ -78,7 +94,7 @@ class ServiceController extends Controller
             ]);
 
             if ($request->hasFile('image')) {
-                $validated['image'] = $request->file('image')->store('services', 'public');
+                $validated['image'] = $this->imageToDataUrl($request->file('image'));
             }
 
             $validated['is_active'] = $validated['is_active'] ?? true;
@@ -123,10 +139,10 @@ class ServiceController extends Controller
             ]);
 
             if ($request->hasFile('image')) {
-                if ($service->image && !str_starts_with($service->image, 'http')) {
+                if ($service->image && !str_starts_with($service->image, 'http') && !str_starts_with($service->image, 'data:image/')) {
                     Storage::disk('public')->delete($service->image);
                 }
-                $validated['image'] = $request->file('image')->store('services', 'public');
+                $validated['image'] = $this->imageToDataUrl($request->file('image'));
             }
 
             $service->update($validated);
@@ -164,7 +180,7 @@ class ServiceController extends Controller
         try {
             $service = Service::findOrFail($id);
 
-            if ($service->image && !str_starts_with($service->image, 'http')) {
+            if ($service->image && !str_starts_with($service->image, 'http') && !str_starts_with($service->image, 'data:image/')) {
                 Storage::disk('public')->delete($service->image);
             }
 
