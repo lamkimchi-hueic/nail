@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\SpatieRoleSetup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -14,6 +15,8 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         try {
+            SpatieRoleSetup::ensure();
+
             $validated = $request->validate([
                 'username' => 'required|string|max:50|unique:users',
                 'email' => 'required|string|email|max:255|unique:users',
@@ -89,6 +92,8 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         try {
+            SpatieRoleSetup::ensure();
+
             $validated = $request->validate([
                 'username' => 'required|string',
                 'password' => 'required|string'

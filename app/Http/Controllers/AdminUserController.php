@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\SpatieRoleSetup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
@@ -20,6 +21,8 @@ class AdminUserController extends Controller
 
     public function store(Request $request)
     {
+        SpatieRoleSetup::ensure();
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'username' => 'required|string|max:255|unique:users',
@@ -53,6 +56,8 @@ class AdminUserController extends Controller
 
     public function update(Request $request, $id)
     {
+        SpatieRoleSetup::ensure();
+
         $user = User::findOrFail($id);
 
         $validated = $request->validate([

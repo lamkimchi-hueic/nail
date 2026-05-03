@@ -6,6 +6,7 @@ use App\Models\Appointment;
 use App\Models\AppointmentDetail;
 use App\Models\Service;
 use App\Models\User;
+use App\Support\SpatieRoleSetup;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -337,6 +338,8 @@ class AppointmentController extends Controller
     public function createManual(Request $request)
     {
         try {
+            SpatieRoleSetup::ensure();
+
             $this->authorize('create', Appointment::class);
 
             $validated = $request->validate([
@@ -373,6 +376,7 @@ class AppointmentController extends Controller
                             'role' => 'customer',
                         ]
                     );
+                    $user->syncRoles(['customer']);
                 } else {
                     $user = User::findOrFail($validated['user_id']);
                 }
