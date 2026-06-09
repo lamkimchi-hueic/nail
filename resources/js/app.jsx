@@ -501,8 +501,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-wide text-[#e5d2c4] md:text-sm">
-              <a href="#dich-vu" className="hover:text-white transition">Dịch vụ</a>
-              <a href="#dat-lich" className="hover:text-white transition">Đặt lịch</a>
+
               {auth && <a href="#lich-hen-cua-toi" className="hover:text-white transition">Lịch hẹn của tôi</a>}
               <a href="#bo-suu-tap" className="hover:text-white transition">Bộ sưu tập</a>
               <a href="#gio-lam" className="hover:text-white transition">Giờ làm việc</a>
@@ -559,7 +558,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
 
         <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_380px]">
           <section id="trang-chu" className="overflow-hidden rounded-2xl border border-[#7f5c44]/40 bg-[#0b0712]">
-            <div className="relative min-h-[320px]">
+            <div className="relative min-h-[213px]">
               {salonSettings.hero_image ? (
                 <>
                   <img src={resolveImageUrl(salonSettings.hero_image)} alt="Hero" className="absolute inset-0 h-full w-full object-cover" />
