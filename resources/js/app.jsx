@@ -514,6 +514,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
   const [myAppointments, setMyAppointments] = useState([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
   const [showServices, setShowServices] = useState(false);
+  const [showDateTime, setShowDateTime] = useState(false);
   const [bookingDialog, setBookingDialog] = useState({ open: false, type: '', title: '', message: '', items: [] });
 
   // Booking Form State
@@ -895,10 +896,6 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
                 </div>
               ) : (
                 <form onSubmit={handleBookingSubmit} className="flex flex-1 flex-col gap-4">
-                  <div className="rounded-xl border border-[#6f5262]/70 bg-[#0f0a17] p-3">
-                    <p className="text-xs font-black uppercase text-[#d5a56a]">Bước 1</p>
-                    <p className="mt-1 text-sm text-[#cbb9bb]">Thông tin này giúp salon liên hệ xác nhận lịch.</p>
-                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <input
                       type="text"
@@ -915,61 +912,62 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
                       className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
                     />
                   </div>
-                  <div className="rounded-xl border border-[#6f5262]/70 bg-[#0f0a17] p-3">
-                    <p className="text-xs font-black uppercase text-[#d5a56a]">Bước 2</p>
-                    <p className="mt-1 text-sm text-[#cbb9bb]">Chọn ngày, giờ và nhân viên phù hợp.</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <input
-                      required
-                      type="date"
-                      value={bookingForm.appointment_date}
-                      min={new Date().toISOString().split('T')[0]}
-                      onChange={(e) => setBookingForm({...bookingForm, appointment_date: e.target.value})}
-                      className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
-                    />
-                    <input
-                      required
-                      type="time"
-                      value={bookingForm.appointment_time}
-                      onChange={(e) => setBookingForm({...bookingForm, appointment_time: e.target.value})}
-                      className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    {commonTimeSlots.map((slot) => (
-                      <button
-                        key={slot}
-                        type="button"
-                        onClick={() => setBookingForm({ ...bookingForm, appointment_time: slot })}
-                        className={`rounded-lg border px-2 py-2 text-xs font-bold transition ${
-                          bookingForm.appointment_time === slot
-                            ? 'border-[#d5a56a] bg-[#d5a56a] text-[#2a1724]'
-                            : 'border-[#6f5262] bg-[#0f0a17] text-[#cbb9bb] hover:border-[#d5a56a]'
-                        }`}
-                      >
-                        {slot}
-                      </button>
-                    ))}
-                  </div>
-
-                  <select
-                    value={bookingForm.staff_id}
-                    onChange={(e) => setBookingForm({...bookingForm, staff_id: e.target.value})}
-                    className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
-                  >
-                    <option value="">Nhân viên bất kỳ</option>
-                    {(Array.isArray(staffs) ? staffs : []).map((staff) => (
-                      <option key={staff.id} value={staff.id}>{staff.name}</option>
-                    ))}
-                  </select>
 
                   <div className="space-y-2">
-                    <div className="rounded-xl border border-[#6f5262]/70 bg-[#0f0a17] p-3">
-                      <p className="text-xs font-black uppercase text-[#d5a56a]">Bước 3</p>
-                      <p className="mt-1 text-sm text-[#cbb9bb]">Chọn một hoặc nhiều dịch vụ muốn làm.</p>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowDateTime(!showDateTime)}
+                      className="flex w-full items-center justify-between rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
+                    >
+                      <span className={(bookingForm.appointment_date && bookingForm.appointment_time) ? "text-white" : "text-gray-400"}>
+                        {(bookingForm.appointment_date && bookingForm.appointment_time)
+                          ? `${bookingForm.appointment_date} lúc ${bookingForm.appointment_time}`
+                          : "Chọn ngày và giờ..."}
+                      </span>
+                      <span className={`transition-transform ${showDateTime ? 'rotate-180' : ''}`}>▼</span>
+                    </button>
+
+                    {showDateTime && (
+                      <div className="space-y-3 p-3 rounded-xl border border-[#6f5262]/50 bg-[#0c0814] animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="grid grid-cols-2 gap-3">
+                          <input
+                            required
+                            type="date"
+                            value={bookingForm.appointment_date}
+                            min={new Date().toISOString().split('T')[0]}
+                            onChange={(e) => setBookingForm({...bookingForm, appointment_date: e.target.value})}
+                            className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
+                          />
+                          <input
+                            required
+                            type="time"
+                            value={bookingForm.appointment_time}
+                            onChange={(e) => setBookingForm({...bookingForm, appointment_time: e.target.value})}
+                            className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          {commonTimeSlots.map((slot) => (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => setBookingForm({ ...bookingForm, appointment_time: slot })}
+                              className={`rounded-lg border px-2 py-2 text-xs font-bold transition ${
+                                bookingForm.appointment_time === slot
+                                  ? 'border-[#d5a56a] bg-[#d5a56a] text-[#2a1724]'
+                                  : 'border-[#6f5262] bg-[#0f0a17] text-[#cbb9bb] hover:border-[#d5a56a]'
+                              }`}
+                            >
+                              {slot}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
                     <button
                       type="button"
                       onClick={() => setShowServices(!showServices)}
