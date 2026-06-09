@@ -1022,20 +1022,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
                     className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c] h-20"
                   />
 
-                  <div className="rounded-xl border border-[#d5a56a]/35 bg-[#0f0a17] p-4 text-sm">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <span className="text-[#cbb9bb]">Dịch vụ đã chọn</span>
-                      <span className="font-bold text-[#f8e7d9]">{selectedServices.length}</span>
-                    </div>
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <span className="text-[#cbb9bb]">Thời lượng dự kiến</span>
-                      <span className="font-bold text-[#f8e7d9]">{bookingDuration ? `${bookingDuration} phút` : 'Chưa chọn'}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 border-t border-[#6f5262]/60 pt-3">
-                      <span className="font-bold text-[#f7d9b2]">Tổng tạm tính</span>
-                      <span className="text-lg font-black text-[#d5a56a]">{formatServicePrice(bookingTotal)}</span>
-                    </div>
-                  </div>
+
 
                   <button
                     type="submit"
