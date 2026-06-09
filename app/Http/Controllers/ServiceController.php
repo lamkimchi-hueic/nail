@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\SalonSetting;
 use App\Models\Service;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
 class ServiceController extends Controller
@@ -14,6 +16,10 @@ class ServiceController extends Controller
             return null;
         }
 
+        if (str_starts_with($path, 'data:image/')) {
+            return $path;
+        }
+
         if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
             return $path;
         }
@@ -21,13 +27,65 @@ class ServiceController extends Controller
         return asset('storage/' . ltrim($path, '/'));
     }
 
+    private function imageToDataUrl(\Illuminate\Http\UploadedFile $file): string
+    {
+        $mimeType = $file->getMimeType() ?: 'image/jpeg';
+        $contents = file_get_contents($file->getRealPath());
+
+        if ($contents === false) {
+            throw new \RuntimeException('Không thể đọc file ảnh đã tải lên.');
+        }
+
+        return 'data:' . $mimeType . ';base64,' . base64_encode($contents);
+    }
+
+    private function serviceImageKey(int $serviceId): string
+    {
+        return 'service_image_' . $serviceId;
+    }
+
+    private function serviceImage(Service $service): ?string
+    {
+        $settingImage = SalonSetting::query()
+            ->where('key', $this->serviceImageKey((int) $service->id))
+            ->value('value');
+
+        if ($settingImage) {
+            if (is_string($settingImage) && str_starts_with($settingImage, '"')) {
+                $decoded = json_decode($settingImage, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_string($decoded)) {
+                    return $decoded;
+                }
+            }
+
+            return (string) $settingImage;
+        }
+
+        return $service->image;
+    }
+
+    private function attachImageUrl(Service $service): Service
+    {
+        $service->image_url = $this->toPublicUrl($this->serviceImage($service));
+        return $service;
+    }
+
+    private function persistServiceImage(Service $service, \Illuminate\Http\UploadedFile $file): void
+    {
+        SalonSetting::query()->updateOrCreate(
+            ['key' => $this->serviceImageKey((int) $service->id)],
+            ['value' => $this->imageToDataUrl($file)]
+        );
+    }
+
     // Get all services
     public function index()
     {
         try {
-            $services = Service::where('is_active', true)->get()->map(function (Service $service) {
-                $service->image_url = $this->toPublicUrl($service->image);
-                return $service;
+            $services = Cache::remember('public_services', now()->addMinutes(10), function () {
+                return Service::where('is_active', true)->get()->map(function (Service $service) {
+                    return $this->attachImageUrl($service);
+                });
             });
             return response()->json([
                 'success' => true,
@@ -47,7 +105,7 @@ class ServiceController extends Controller
     {
         try {
             $service = Service::findOrFail($id);
-            $service->image_url = $this->toPublicUrl($service->image);
+            $this->attachImageUrl($service);
 
             return response()->json([
                 'success' => true,
@@ -74,14 +132,18 @@ class ServiceController extends Controller
                 'is_active' => 'nullable|boolean'
             ]);
 
-            if ($request->hasFile('image')) {
-                $validated['image'] = $request->file('image')->store('services', 'public');
-            }
+            $imageFile = $request->file('image');
+            unset($validated['image']);
 
             $validated['is_active'] = $validated['is_active'] ?? true;
 
             $service = Service::create($validated);
-            $service->image_url = $this->toPublicUrl($service->image);
+            if ($imageFile) {
+                $this->persistServiceImage($service, $imageFile);
+            }
+
+            Cache::forget('public_services');
+            $this->attachImageUrl($service);
 
             return response()->json([
                 'success' => true,
@@ -118,15 +180,19 @@ class ServiceController extends Controller
                 'is_active' => 'nullable|boolean'
             ]);
 
-            if ($request->hasFile('image')) {
-                if ($service->image && !str_starts_with($service->image, 'http')) {
+            $imageFile = $request->file('image');
+            unset($validated['image']);
+
+            if ($imageFile) {
+                if ($service->image && !str_starts_with($service->image, 'http') && !str_starts_with($service->image, 'data:image/')) {
                     Storage::disk('public')->delete($service->image);
                 }
-                $validated['image'] = $request->file('image')->store('services', 'public');
+                $this->persistServiceImage($service, $imageFile);
             }
 
             $service->update($validated);
-            $service->image_url = $this->toPublicUrl($service->image);
+            Cache::forget('public_services');
+            $this->attachImageUrl($service);
 
             return response()->json([
                 'success' => true,
@@ -159,11 +225,13 @@ class ServiceController extends Controller
         try {
             $service = Service::findOrFail($id);
 
-            if ($service->image && !str_starts_with($service->image, 'http')) {
+            if ($service->image && !str_starts_with($service->image, 'http') && !str_starts_with($service->image, 'data:image/')) {
                 Storage::disk('public')->delete($service->image);
             }
+            SalonSetting::query()->where('key', $this->serviceImageKey((int) $service->id))->delete();
 
             $service->delete();
+            Cache::forget('public_services');
 
             return response()->json([
                 'success' => true,

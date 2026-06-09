@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\SpatieRoleSetup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
@@ -14,6 +16,8 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         try {
+            SpatieRoleSetup::ensure();
+
             $validated = $request->validate([
                 'username' => 'required|string|max:50|unique:users',
                 'email' => 'required|string|email|max:255|unique:users',
@@ -56,10 +60,6 @@ class AuthController extends Controller
             // Create Sanctum token
             $token = $user->createToken('auth_token')->plainTextToken;
 
-            // Create session-based auth for web guard requests
-            Auth::login($user);
-            $request->session()->regenerate();
-
             $message = $role === 'admin' ? 'Đăng ký admin thành công' : 'Đăng ký khách hàng thành công';
 
             return response()->json([
@@ -89,6 +89,8 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         try {
+            SpatieRoleSetup::ensure();
+
             $validated = $request->validate([
                 'username' => 'required|string',
                 'password' => 'required|string'
@@ -126,10 +128,6 @@ class AuthController extends Controller
 
             // Create Sanctum token
             $token = $user->createToken('auth_token')->plainTextToken;
-
-            // Create session-based auth for web guard requests
-            Auth::login($user);
-            $request->session()->regenerate();
 
             return response()->json([
                 'success' => true,
@@ -193,14 +191,22 @@ class AuthController extends Controller
     public function logout()
     {
         try {
-            Auth::logout();
-            request()->session()->invalidate();
-            request()->session()->regenerateToken();
+            $user = request()->user();
+            if ($user && method_exists($user, 'currentAccessToken') && $user->currentAccessToken()) {
+                $user->currentAccessToken()->delete();
+            }
+
+            Auth::guard('web')->logout();
+            if (request()->hasSession()) {
+                request()->session()->invalidate();
+                request()->session()->regenerateToken();
+            }
 
             return response()->json([
                 'success' => true,
                 'message' => 'Đăng xuất thành công'
-            ]);
+            ])->withCookie(Cookie::forget(config('session.cookie')))
+                ->withCookie(Cookie::forget('XSRF-TOKEN'));
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\SpatieRoleSetup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -121,6 +122,8 @@ class OAuthController extends Controller
     public function completeRegistration(Request $request)
     {
         try {
+            SpatieRoleSetup::ensure();
+
             $validated = $request->validate([
                 'setup_token' => 'required|string',
                 'password' => 'required|string|min:8|confirmed',
@@ -161,10 +164,6 @@ class OAuthController extends Controller
 
             // Create Sanctum token
             $token = $user->createToken('auth_token')->plainTextToken;
-
-            // Session login for web guard
-            Auth::login($user);
-            $request->session()->regenerate();
 
             return response()->json([
                 'success' => true,

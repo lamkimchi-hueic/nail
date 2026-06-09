@@ -113,6 +113,7 @@ function getLocalDateTimeParts(dateTimeValue) {
 
 function resolveImageUrl(path) {
   if (!path) return '';
+  if (path.startsWith('data:image/')) return path;
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
   if (path.startsWith('/storage/')) return `${API_BASE_URL}${path}`;
   return `${API_BASE_URL}/storage/${path}`;
@@ -125,6 +126,7 @@ function resolveServiceImage(service) {
 
 function resolveHeroImage(url) {
   if (!url) return '';
+  if (url.startsWith('data:image/')) return url;
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   if (url.startsWith('/')) return `${API_BASE_URL}${url}`;
   return `${API_BASE_URL}/${url}`;
@@ -143,6 +145,200 @@ const setCookie = (name, value, days = 7) => {
   expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
   document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
 };
+
+function getAuthHeaders(extra = {}) {
+  const token = localStorage.getItem('auth_token');
+  return {
+    Accept: 'application/json',
+    'X-XSRF-TOKEN': decodeURIComponent(getCookie('XSRF-TOKEN') || ''),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra
+  };
+}
+
+function clearClientAuthStorage() {
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('userAuth');
+  ['XSRF-TOKEN', 'laravel-session', 'laravel_session'].forEach((name) => {
+    document.cookie = `${name}=; Max-Age=0; path=/`;
+    document.cookie = `${name}=; Max-Age=0; path=/; SameSite=Lax`;
+  });
+}
+
+async function logoutCurrentUser(setAuth) {
+  const headers = getAuthHeaders();
+  clearClientAuthStorage();
+  setAuth(null);
+
+  try {
+    await fetch(`${API_BASE_URL}/api/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers
+    });
+  } catch (error) {
+    console.error('logout error:', error);
+  }
+}
+
+function LoadingOverlay({ show, label = 'Đang xử lý...' }) {
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
+      <div className="flex items-center gap-3 rounded-2xl border border-[#d5a56a]/40 bg-[#140d1f] px-5 py-4 text-[#f8e7d9] shadow-2xl shadow-black/50">
+        <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#d5a56a] border-t-transparent" />
+        <span className="text-sm font-black uppercase tracking-wide">{label}</span>
+      </div>
+    </div>
+  );
+}
+
+function InlineLoader({ label = 'Đang tải...' }) {
+  return (
+    <div className="flex items-center gap-2 text-sm text-[#c8b4b6]">
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#d5a56a] border-t-transparent" />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function formatServicePrice(value) {
+  const amount = Number(value || 0);
+  if (!amount) return 'Liên hệ';
+  return `${amount.toLocaleString('vi-VN')} đ`;
+}
+
+function PasswordVisibilityIcon({ visible }) {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {visible ? (
+        <>
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+          <circle cx="12" cy="12" r="3" />
+        </>
+      ) : (
+        <>
+          <path d="M10.7 5.2A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a18.7 18.7 0 0 1-3.1 4.2" />
+          <path d="M14.1 14.1A3 3 0 0 1 9.9 9.9" />
+          <path d="M6.6 6.6C3.7 8.5 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 4.4-1.1" />
+          <path d="M2 2l20 20" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function AlertBanner({ message, type = 'info', onClose }) {
+  if (!message?.text) return null;
+
+  const styles = {
+    success: 'border-emerald-400/50 bg-emerald-500/10 text-emerald-100',
+    error: 'border-rose-400/50 bg-rose-500/10 text-rose-100',
+    info: 'border-[#d5a56a]/50 bg-[#d5a56a]/10 text-[#f8e7d9]'
+  };
+  const label = type === 'success' ? 'Thành công' : type === 'error' ? 'Có lỗi' : 'Thông báo';
+
+  return (
+    <div className={`mt-3 flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${styles[type] || styles.info}`}>
+      <div>
+        <p className="font-black uppercase tracking-wide">{label}</p>
+        <p className="mt-1 leading-5">{message.text}</p>
+      </div>
+      {onClose && (
+        <button type="button" onClick={onClose} className="rounded-md px-2 py-1 font-black hover:bg-white/10" aria-label="Đóng thông báo">
+          x
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ConfirmDialog({ dialog, onCancel, onConfirm }) {
+  if (!dialog?.open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-[#d5a56a]/45 bg-[#140d1f] p-6 text-[#f8e7d9] shadow-2xl shadow-black/50">
+        <p className="text-xs font-bold uppercase text-[#d5a56a]">Xác nhận thao tác</p>
+        <h3 className="mt-1 text-2xl font-black text-[#f7d9b2]">{dialog.title || 'Bạn chắc chắn chứ?'}</h3>
+        <p className="mt-3 text-sm leading-6 text-[#d8c5c8]">{dialog.message}</p>
+        <div className="mt-6 flex gap-3">
+          <button type="button" onClick={onConfirm} className="flex-1 rounded-xl bg-rose-400 py-3 text-sm font-black uppercase text-[#2a1724] hover:bg-rose-300">
+            Xác nhận
+          </button>
+          <button type="button" onClick={onCancel} className="flex-1 rounded-xl border border-[#8d6a52] py-3 text-sm font-black uppercase text-[#f7d9b2] hover:bg-[#2a1d2f]">
+            Hủy
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BookingDialog({ dialog, onClose, onConfirm, isSubmitting }) {
+  if (!dialog?.open) return null;
+
+  const toneClass = dialog.type === 'error'
+    ? 'border-rose-400/50 text-rose-100'
+    : dialog.type === 'success'
+      ? 'border-emerald-400/50 text-emerald-100'
+      : 'border-[#d5a56a]/50 text-[#f8e7d9]';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
+      <div className={`w-full max-w-md rounded-2xl border bg-[#140d1f] p-6 shadow-2xl shadow-black/50 ${toneClass}`}>
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase text-[#d5a56a]">{dialog.eyebrow || 'Thông báo'}</p>
+            <h3 className="mt-1 text-2xl font-black text-[#f7d9b2]">{dialog.title}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-[#6f5262] px-3 py-1 text-sm font-bold text-[#f7d9b2] hover:bg-white/10"
+            aria-label="Đóng"
+          >
+            x
+          </button>
+        </div>
+
+        {dialog.message && <p className="mb-4 text-sm leading-6 text-[#d8c5c8]">{dialog.message}</p>}
+
+        {dialog.items?.length > 0 && (
+          <div className="mb-5 space-y-2 rounded-xl border border-[#6f5262]/70 bg-[#0f0a17] p-4">
+            {dialog.items.map((item) => (
+              <div key={item.label} className="flex justify-between gap-4 text-sm">
+                <span className="text-[#cbb9bb]">{item.label}</span>
+                <span className="text-right font-bold text-[#f8e7d9]">{item.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          {dialog.type === 'confirm' && (
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={isSubmitting}
+              className="flex-1 rounded-xl bg-[#d5a56a] py-3 text-sm font-black uppercase text-[#2a1724] disabled:opacity-60"
+            >
+              {isSubmitting ? 'Đang gửi...' : 'Gửi lịch hẹn'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-[#8d6a52] py-3 text-sm font-black uppercase text-[#f7d9b2] hover:bg-[#2a1d2f]"
+          >
+            {dialog.type === 'confirm' ? 'Xem lại' : 'Đóng'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const AUTH_STORAGE_KEY = 'userAuth';
@@ -173,7 +369,7 @@ function App() {
       if (nextAuth?.user) {
         localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextAuth));
       } else {
-        localStorage.removeItem(AUTH_STORAGE_KEY);
+        clearClientAuthStorage();
         setShowAdminPanel(false);
       }
     } catch (e) {
@@ -191,6 +387,13 @@ function App() {
     const fetchUser = async () => {
       try {
         const authToken = localStorage.getItem('auth_token');
+        if (!authToken) {
+          clearClientAuthStorage();
+          setAuth(null);
+          setLoading(false);
+          return;
+        }
+
         const res = await fetch(`${API_BASE_URL}/api/user`, {
           credentials: 'include',
           headers: {
@@ -249,7 +452,10 @@ function App() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100">
-        <p className="text-lg font-semibold text-slate-700">Đang tải...</p>
+        <div className="flex items-center gap-3 text-lg font-semibold text-slate-700">
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-600 border-t-transparent" />
+          <span>Đang tải tài khoản...</span>
+        </div>
       </div>
     );
   }
@@ -275,12 +481,13 @@ function App() {
     );
   }
 
-  // Admin goes to AdminPanel
-  if (auth.user?.role === 'admin' && showAdminPanel) {
+  // Admin goes directly to AdminPanel; customers stay on the public booking flow.
+  if (auth.user?.role === 'admin') {
     return (
       <AdminPanel
         auth={auth}
         setAuth={setAuth}
+        onLogout={() => logoutCurrentUser(setAuth)}
         page={adminPage}
         setPage={setAdminPage}
       />
@@ -292,20 +499,22 @@ function App() {
     <PublicHome
       auth={auth}
       setAuth={setAuth}
-      onAdminClick={auth.user?.role === 'admin' ? () => setShowAdminPanel(true) : null}
+      onAdminClick={null}
+      onLogout={() => logoutCurrentUser(setAuth)}
       onLoginClick={() => { setAuthMode('login'); setShowAuthForm(true); }}
       onRegisterClick={() => { setAuthMode('register'); setShowAuthForm(true); }}
     />
   );
 }
 
-function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick }) {
+function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onRegisterClick }) {
   const [services, setServices] = useState([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [staffs, setStaffs] = useState([]);
   const [myAppointments, setMyAppointments] = useState([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
   const [showServices, setShowServices] = useState(false);
+  const [bookingDialog, setBookingDialog] = useState({ open: false, type: '', title: '', message: '', items: [] });
 
   // Booking Form State
   const [bookingForm, setBookingForm] = useState({
@@ -320,15 +529,50 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
   const [bookingMsg, setBookingMsg] = useState({ type: '', text: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const selectedServices = useMemo(() => {
+    const list = Array.isArray(services) ? services : [];
+    return list.filter((service) => bookingForm.service_ids.includes(service.id));
+  }, [services, bookingForm.service_ids]);
+
+  const selectedStaff = useMemo(() => {
+    const list = Array.isArray(staffs) ? staffs : [];
+    return list.find((staff) => String(staff.id) === String(bookingForm.staff_id));
+  }, [staffs, bookingForm.staff_id]);
+
+  const bookingTotal = selectedServices.reduce((sum, service) => sum + Number(service.price || 0), 0);
+  const bookingDuration = selectedServices.reduce((sum, service) => sum + Number(service.duration || 0), 0);
+  const hasBookingBasics = Boolean(bookingForm.appointment_date && bookingForm.appointment_time && bookingForm.service_ids.length > 0);
+  const commonTimeSlots = ['09:00', '10:30', '13:00', '14:30', '16:00', '17:30'];
+
+  const getBookingDialogItems = () => [
+    { label: 'Khách hàng', value: bookingForm.name || auth?.user?.username || 'Chưa nhập' },
+    { label: 'Số điện thoại', value: bookingForm.phone || 'Chưa nhập' },
+    { label: 'Ngày hẹn', value: formatDisplayDate(bookingForm.appointment_date) || 'Chưa chọn' },
+    { label: 'Giờ hẹn', value: bookingForm.appointment_time || 'Chưa chọn' },
+    { label: 'Nhân viên', value: selectedStaff?.name || 'Nhân viên bất kỳ' },
+    { label: 'Dịch vụ', value: selectedServices.map((service) => service.name).join(', ') || 'Chưa chọn' },
+    { label: 'Thời lượng dự kiến', value: bookingDuration ? `${bookingDuration} phút` : 'Đang cập nhật' },
+    { label: 'Tổng tạm tính', value: formatServicePrice(bookingTotal) }
+  ];
+
+  const showBookingError = (message) => {
+    setBookingMsg({ type: 'error', text: message });
+    setBookingDialog({
+      open: true,
+      type: 'error',
+      eyebrow: 'Không thể đặt lịch',
+      title: 'Cần bổ sung thông tin',
+      message,
+      items: []
+    });
+  };
+
   const fetchMyAppointments = async () => {
     setLoadingAppointments(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/my-appointments`, {
         credentials: 'include',
-        headers: { 
-          'Accept': 'application/json',
-          'X-XSRF-TOKEN': decodeURIComponent(getCookie('XSRF-TOKEN') || '')
-        }
+        headers: getAuthHeaders()
       });
       const data = await res.json();
       const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
@@ -431,36 +675,69 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
   const handleBookingSubmit = async (e) => {
     e.preventDefault();
     if (!bookingForm.appointment_date || !bookingForm.appointment_time || bookingForm.service_ids.length === 0) {
-      setBookingMsg({ type: 'error', text: 'Vui lòng điền đầy đủ thông tin đặt lịch (ngày, giờ, dịch vụ).' });
+      showBookingError('Vui lòng chọn ngày, giờ và ít nhất một dịch vụ trước khi gửi lịch hẹn.');
       return;
     }
 
+    if (!auth?.user) {
+      showBookingError('Vui lòng đăng nhập hoặc đăng ký tài khoản khách hàng trước khi đặt lịch.');
+      return;
+    }
+
+    setBookingMsg({ type: '', text: '' });
+    setBookingDialog({
+      open: true,
+      type: 'confirm',
+      eyebrow: 'Xác nhận lịch hẹn',
+      title: 'Kiểm tra thông tin trước khi gửi',
+      message: 'Sau khi gửi, lịch hẹn sẽ ở trạng thái chờ xác nhận. Salon sẽ liên hệ nếu cần điều chỉnh.',
+      items: getBookingDialogItems()
+    });
+  };
+
+  const submitBooking = async () => {
     setIsSubmitting(true);
     setBookingMsg({ type: '', text: '' });
 
     try {
       const payload = {
         ...bookingForm,
-        appointment_date: `${bookingForm.appointment_date} ${bookingForm.appointment_time}`,
+        staff_id: bookingForm.staff_id || null,
+        appointment_date: `${bookingForm.appointment_date} ${bookingForm.appointment_time}:00`,
         services: bookingForm.service_ids
       };
 
       const res = await fetch(`${API_BASE_URL}/api/appointments`, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-XSRF-TOKEN': decodeURIComponent(getCookie('XSRF-TOKEN') || '')
-        },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload)
       });
 
       const data = await res.json();
       if (!res.ok) {
-        setBookingMsg({ type: 'error', text: data.message || 'Đặt lịch thất bại.' });
+        const firstError = data?.errors ? Object.values(data.errors).flat()[0] : '';
+        const message = firstError || data.message || 'Đặt lịch thất bại.';
+        setBookingMsg({ type: 'error', text: message });
+        setBookingDialog({
+          open: true,
+          type: 'error',
+          eyebrow: 'Đặt lịch thất bại',
+          title: 'Chưa gửi được lịch hẹn',
+          message,
+          items: getBookingDialogItems()
+        });
       } else {
-        setBookingMsg({ type: 'success', text: '🎉 Đặt lịch thành công! Chúng tôi sẽ sớm liên hệ xác nhận.' });
+        const message = data.message || 'Đặt lịch thành công! Chúng tôi sẽ sớm liên hệ xác nhận.';
+        setBookingMsg({ type: 'success', text: message });
+        setBookingDialog({
+          open: true,
+          type: 'success',
+          eyebrow: 'Đặt lịch thành công',
+          title: 'Lịch hẹn đã được gửi',
+          message,
+          items: getBookingDialogItems()
+        });
         setBookingForm({
           ...bookingForm,
           staff_id: '',
@@ -472,7 +749,16 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
         if (auth?.user) fetchMyAppointments();
       }
     } catch (e) {
-      setBookingMsg({ type: 'error', text: 'Lỗi kết nối. Vui lòng thử lại.' });
+      const message = 'Lỗi kết nối. Vui lòng thử lại.';
+      setBookingMsg({ type: 'error', text: message });
+      setBookingDialog({
+        open: true,
+        type: 'error',
+        eyebrow: 'Lỗi kết nối',
+        title: 'Chưa gửi được lịch hẹn',
+        message,
+        items: getBookingDialogItems()
+      });
     }
     setIsSubmitting(false);
   };
@@ -488,6 +774,14 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
 
   return (
     <div className="min-h-screen bg-[#08050c] text-[#f8e7d9]">
+      <BookingDialog
+        dialog={bookingDialog}
+        isSubmitting={isSubmitting}
+        onClose={() => {
+          if (!isSubmitting) setBookingDialog({ open: false, type: '', title: '', message: '', items: [] });
+        }}
+        onConfirm={submitBooking}
+      />
       <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6">
         <nav className="rounded-xl border border-[#7f5c44]/40 bg-[#140d1f]/90 px-4 py-3 backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -518,19 +812,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
                     </button>
                   )}
                   <button
-                    onClick={async () => {
-                      try {
-                        await fetch(`${API_BASE_URL}/api/logout`, { 
-                          method: 'POST', 
-                          credentials: 'include', 
-                          headers: { 
-                            'Accept': 'application/json',
-                            'X-XSRF-TOKEN': decodeURIComponent(getCookie('XSRF-TOKEN') || '')
-                          } 
-                        });
-                      } catch (e) {}
-                      setAuth(null);
-                    }}
+                    onClick={onLogout}
                     className="rounded-md border border-[#8d6a52] px-3 py-2 text-[#f7d9b2] hover:bg-[#2a1d2f]"
                   >
                     Đăng xuất
@@ -556,13 +838,18 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
           </div>
         </nav>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_380px]">
+        <div className="mt-4 grid items-stretch gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
           <section id="trang-chu" className="overflow-hidden rounded-2xl border border-[#7f5c44]/40 bg-[#0b0712]">
-            <div className="relative min-h-[213px]">
+            <div className="relative h-full min-h-[347px]">
               {salonSettings.hero_image ? (
                 <>
-                  <img src={resolveImageUrl(salonSettings.hero_image)} alt="Hero" className="absolute inset-0 h-full w-full object-cover" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-[#0b0712]/95 via-[#0b0712]/70 to-transparent" />
+                  <img
+                    src={resolveImageUrl(salonSettings.hero_image)}
+                    alt="Hero"
+                    className="absolute inset-0 h-full w-full object-cover object-center [image-rendering:auto]"
+                  />
+                  <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(11,7,18,0.82)_0%,rgba(11,7,18,0.52)_46%,rgba(11,7,18,0.12)_100%)]" />
+                  <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-[#0b0712]/45 to-transparent" />
                 </>
               ) : (
                 <>
@@ -572,33 +859,66 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
                 </>
               )}
 
-              <div className="relative z-10 flex h-full flex-col justify-center px-6 py-8 md:px-16 md:py-10">
-                <p className="mb-4 text-base uppercase tracking-[0.4em] text-[#d5a56a] font-bold">{salonSettings.salon_name || 'Luxury Nails Spa'}</p>
-                <h1 className="mb-6 text-4xl font-black leading-tight text-[#f8e7d9] md:text-7xl">
+              <div className="relative z-10 flex h-full min-h-[520px] flex-col justify-center px-6 py-8 md:px-16 md:py-10">
+                <p className="mb-4 text-base font-bold uppercase tracking-[0.4em] text-[#e5b776] drop-shadow-[0_2px_10px_rgba(0,0,0,0.75)]">{salonSettings.salon_name || 'Luxury Nails Spa'}</p>
+                <h1 className="mb-6 text-4xl font-black leading-tight text-[#fff0e4] drop-shadow-[0_4px_18px_rgba(0,0,0,0.70)] md:text-6xl xl:text-7xl">
                   Nâng tầm vẻ đẹp
-                  <span className="block text-[#f4c0c4]">đôi tay bạn</span>
+                  <span className="block text-[#ffcdd2]">đôi tay bạn</span>
                 </h1>
+                <p className="max-w-xl text-base font-semibold leading-7 text-[#f2dfd7] drop-shadow-[0_2px_10px_rgba(0,0,0,0.70)] md:text-lg">
+                  Chọn dịch vụ, ngày giờ và gửi lịch hẹn trong vài thao tác. Tài khoản customer có thể theo dõi lịch đã đặt ngay bên dưới.
+                </p>
               </div>
             </div>
           </section>
 
-          <aside className="flex flex-col gap-4">
-            <div id="dat-lich" className="rounded-2xl border border-[#d5a56a]/40 bg-[#140d1f] p-6 shadow-xl shadow-black/20">
+          <aside className="flex min-h-[520px] flex-col">
+            <div id="dat-lich" className="flex h-full flex-col rounded-2xl border border-[#d5a56a]/40 bg-[#140d1f] p-6 shadow-xl shadow-black/20">
               <h3 className="text-xl font-black uppercase tracking-wide text-[#f7d9b2] mb-5 flex items-center gap-2">
-                <span className="text-2xl">✨</span> Đặt lịch hẹn
+                Đặt lịch hẹn
               </h3>
               {!auth ? (
-                <div className="text-center py-8 space-y-4">
-                  <p className="text-[#cbb9bb] text-sm">Vui lòng đăng nhập để thực hiện đặt lịch hẹn.</p>
+                <div className="flex flex-1 flex-col justify-center gap-4 text-center">
+                  <p className="text-[#cbb9bb] text-sm">Đăng nhập hoặc tạo tài khoản customer để đặt lịch và xem lại lịch hẹn của bạn.</p>
                   <button
                     onClick={onLoginClick}
                     className="w-full rounded-xl bg-[#d5a56a] py-3 text-sm font-black uppercase tracking-widest text-[#2a1724] hover:shadow-lg hover:shadow-[#d5a56a]/20 transition"
                   >
-                    Đăng nhập / Đăng ký
+                    Đăng nhập
+                  </button>
+                  <button
+                    onClick={onRegisterClick}
+                    className="w-full rounded-xl border border-[#d5a56a]/70 py-3 text-sm font-black uppercase tracking-widest text-[#f7d9b2] transition hover:bg-[#2a1d2f]"
+                  >
+                    Đăng ký customer
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleBookingSubmit} className="space-y-4">
+                <form onSubmit={handleBookingSubmit} className="flex flex-1 flex-col gap-4">
+                  <div className="rounded-xl border border-[#6f5262]/70 bg-[#0f0a17] p-3">
+                    <p className="text-xs font-black uppercase text-[#d5a56a]">Bước 1</p>
+                    <p className="mt-1 text-sm text-[#cbb9bb]">Thông tin này giúp salon liên hệ xác nhận lịch.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      placeholder="Tên khách"
+                      value={bookingForm.name}
+                      onChange={(e) => setBookingForm({...bookingForm, name: e.target.value})}
+                      className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
+                    />
+                    <input
+                      type="tel"
+                      placeholder="Số điện thoại"
+                      value={bookingForm.phone}
+                      onChange={(e) => setBookingForm({...bookingForm, phone: e.target.value})}
+                      className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
+                    />
+                  </div>
+                  <div className="rounded-xl border border-[#6f5262]/70 bg-[#0f0a17] p-3">
+                    <p className="text-xs font-black uppercase text-[#d5a56a]">Bước 2</p>
+                    <p className="mt-1 text-sm text-[#cbb9bb]">Chọn ngày, giờ và nhân viên phù hợp.</p>
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <input
                       required
@@ -617,8 +937,39 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
                     />
                   </div>
 
+                  <div className="grid grid-cols-3 gap-2">
+                    {commonTimeSlots.map((slot) => (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => setBookingForm({ ...bookingForm, appointment_time: slot })}
+                        className={`rounded-lg border px-2 py-2 text-xs font-bold transition ${
+                          bookingForm.appointment_time === slot
+                            ? 'border-[#d5a56a] bg-[#d5a56a] text-[#2a1724]'
+                            : 'border-[#6f5262] bg-[#0f0a17] text-[#cbb9bb] hover:border-[#d5a56a]'
+                        }`}
+                      >
+                        {slot}
+                      </button>
+                    ))}
+                  </div>
+
+                  <select
+                    value={bookingForm.staff_id}
+                    onChange={(e) => setBookingForm({...bookingForm, staff_id: e.target.value})}
+                    className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
+                  >
+                    <option value="">Nhân viên bất kỳ</option>
+                    {(Array.isArray(staffs) ? staffs : []).map((staff) => (
+                      <option key={staff.id} value={staff.id}>{staff.name}</option>
+                    ))}
+                  </select>
+
                   <div className="space-y-2">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-[#d5a56a]">Dịch vụ</p>
+                    <div className="rounded-xl border border-[#6f5262]/70 bg-[#0f0a17] p-3">
+                      <p className="text-xs font-black uppercase text-[#d5a56a]">Bước 3</p>
+                      <p className="mt-1 text-sm text-[#cbb9bb]">Chọn một hoặc nhiều dịch vụ muốn làm.</p>
+                    </div>
                     <button
                       type="button"
                       onClick={() => setShowServices(!showServices)}
@@ -634,7 +985,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
 
                     {showServices && (
                       <div className="max-h-40 overflow-y-auto space-y-2 pr-1 custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-200">
-                        {services.map(s => (
+                        {(Array.isArray(services) ? services : []).map(s => (
                           <button
                             key={s.id}
                             type="button"
@@ -645,10 +996,23 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
                               : 'border-[#6f5262] bg-[#0f0a17] text-[#cbb9bb] hover:border-[#8d6a52]'
                             }`}
                           >
-                            <span>{s.name}</span>
-                            <span className="font-bold">{s.price}k</span>
+                            <span className="flex items-center gap-2 text-left">
+                              <span className={`h-4 w-4 rounded border ${
+                                bookingForm.service_ids.includes(s.id) ? 'border-[#d5a56a] bg-[#d5a56a]' : 'border-[#6f5262]'
+                              }`} />
+                              <span>
+                                <span className="block font-bold">{s.name}</span>
+                                <span className="block text-[11px] opacity-80">{s.duration || 0} phút</span>
+                              </span>
+                            </span>
+                            <span className="font-bold">{formatServicePrice(s.price)}</span>
                           </button>
                         ))}
+                        {(!Array.isArray(services) || services.length === 0) && (
+                          <p className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-xs text-[#cbb9bb]">
+                            Chưa có dịch vụ khả dụng.
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -660,12 +1024,27 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
                     className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c] h-20"
                   />
 
+                  <div className="rounded-xl border border-[#d5a56a]/35 bg-[#0f0a17] p-4 text-sm">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span className="text-[#cbb9bb]">Dịch vụ đã chọn</span>
+                      <span className="font-bold text-[#f8e7d9]">{selectedServices.length}</span>
+                    </div>
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span className="text-[#cbb9bb]">Thời lượng dự kiến</span>
+                      <span className="font-bold text-[#f8e7d9]">{bookingDuration ? `${bookingDuration} phút` : 'Chưa chọn'}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t border-[#6f5262]/60 pt-3">
+                      <span className="font-bold text-[#f7d9b2]">Tổng tạm tính</span>
+                      <span className="text-lg font-black text-[#d5a56a]">{formatServicePrice(bookingTotal)}</span>
+                    </div>
+                  </div>
+
                   <button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !hasBookingBasics}
                     className="w-full rounded-xl bg-gradient-to-r from-[#d5a56a] to-[#e4b7bf] py-4 text-sm font-black uppercase tracking-widest text-[#2a1724] hover:shadow-lg hover:shadow-[#d5a56a]/20 transition disabled:opacity-50"
                   >
-                    {isSubmitting ? 'Đang gửi...' : 'Xác nhận đặt lịch'}
+                    {isSubmitting ? 'Đang gửi...' : 'Xem lại và xác nhận'}
                   </button>
 
                   {bookingMsg.text && (
@@ -685,10 +1064,10 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
           </div>
 
           {loadingServices ? (
-            <p className="text-sm text-[#c8b4b6]">Đang tải dịch vụ...</p>
+            <InlineLoader label="Đang tải dịch vụ..." />
           ) : (
             <div className="grid gap-4 md:grid-cols-3">
-              {services.slice(0, 3).map((service) => (
+              {(Array.isArray(services) ? services : []).slice(0, 3).map((service) => (
                 <article key={service.id} className="rounded-xl border border-[#8d6a52]/40 bg-[#170f22] p-3">
                   {resolveServiceImage(service) ? (
                     <img
@@ -702,11 +1081,11 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
                   <h3 className="mt-3 text-lg font-black text-[#f7dfc2]">{service.name}</h3>
                   <p className="mt-1 text-sm text-[#c7b4b6] line-clamp-2">{service.description || 'Dịch vụ chuyên nghiệp cho bộ móng đẹp bền.'}</p>
                   <div className="mt-3 flex items-center justify-between">
-                    <p className="text-sm font-bold text-[#d8a56c]">{service.price}k</p>
+                    <p className="text-sm font-bold text-[#d8a56c]">{formatServicePrice(service.price)}</p>
                   </div>
                 </article>
               ))}
-              {services.length === 0 && <p className="text-sm text-[#c8b4b6]">Chưa có dịch vụ hiển thị.</p>}
+              {(!Array.isArray(services) || services.length === 0) && <p className="text-sm text-[#c8b4b6]">Chưa có dịch vụ hiển thị.</p>}
             </div>
           )}
         </section>
@@ -737,7 +1116,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
             </div>
 
             {loadingAppointments ? (
-              <p className="text-sm text-[#c8b4b6]">Đang tải lịch hẹn...</p>
+              <InlineLoader label="Đang tải lịch hẹn..." />
             ) : myAppointments.length === 0 ? (
               <div className="rounded-xl border border-[#8d6a52]/20 bg-[#170f22] p-8 text-center">
                 <p className="text-[#c7b4b6] italic">Bạn chưa có lịch hẹn nào.</p>
@@ -789,17 +1168,19 @@ function PublicHome({ auth, setAuth, onAdminClick, onLoginClick, onRegisterClick
   );
 }
 
-function AdminPanel({ auth, setAuth, page, setPage }) {
+function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
   const [services, setServices] = useState([]);
   const [staffs, setStaffs] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [formData, setFormData] = useState({ name: '', description: '', price: '', duration: '' });
   const [imageFile, setImageFile] = useState(null);
+  const [serviceImagePreview, setServiceImagePreview] = useState('');
   const [uploadInputKey, setUploadInputKey] = useState(0);
   const [serviceFormMessage, setServiceFormMessage] = useState({ type: '', text: '' });
   const [editingServiceId, setEditingServiceId] = useState(null);
   const [editServiceForm, setEditServiceForm] = useState({ name: '', description: '', price: '', duration: '' });
   const [editServiceImageFile, setEditServiceImageFile] = useState(null);
+  const [editServiceImagePreview, setEditServiceImagePreview] = useState('');
   const [editServiceImageKey, setEditServiceImageKey] = useState(0);
   const [settingsForm, setSettingsForm] = useState({
     salon_name: '',
@@ -826,7 +1207,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const [newAppointmentForm, setNewAppointmentForm] = useState({
     name: '',
     phone: '',
-    staff_id: '1',
+    staff_id: '',
     appointment_date: '',
     appointment_time: '09:00',
     service_ids: [],
@@ -834,7 +1215,9 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   });
 
   const [editAppointmentForm, setEditAppointmentForm] = useState({
-    staff_id: '1',
+    name: '',
+    phone: '',
+    staff_id: '',
     appointment_date: '',
     appointment_time: '09:00',
     service_ids: [],
@@ -868,8 +1251,28 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const [showUserPassword, setShowUserPassword] = useState(false);
   const [showEditUserPassword, setShowEditUserPassword] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [adminNotice, setAdminNotice] = useState({ type: '', text: '' });
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', onConfirm: null });
+  const [adminActionLoading, setAdminActionLoading] = useState('');
 
   const EXPIRED_TOKEN_MESSAGE = 'Vui lòng thoát và đăng nhập lại';
+
+  const notifyAdmin = (type, text) => {
+    setAdminNotice({ type, text });
+  };
+
+  const requestConfirm = (title, message, onConfirm) => {
+    setConfirmDialog({ open: true, title, message, onConfirm });
+  };
+
+  const adminBusyLabel = adminActionLoading
+    || (settingsSaving ? 'Đang lưu cài đặt...'
+      : heroImageUploading ? 'Đang tải ảnh...'
+        : isSubmittingAppointment ? 'Đang xử lý lịch hẹn...'
+          : usersLoading ? 'Đang tải người dùng...'
+            : settingsLoading ? 'Đang tải cài đặt...'
+              : loadingSchedule ? 'Đang tải lịch trống...'
+                : '');
 
   const getAuthHeaders = (extraHeaders = {}) => {
     const authToken = localStorage.getItem('auth_token');
@@ -882,8 +1285,76 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     };
   };
 
+  const validateServiceImage = (file) => {
+    if (!file) return true;
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setServiceFormMessage({ type: 'error', text: 'Chỉ chấp nhận ảnh JPG, PNG hoặc WEBP.' });
+      return false;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setServiceFormMessage({ type: 'error', text: 'Ảnh dịch vụ tối đa 4MB.' });
+      return false;
+    }
+    return true;
+  };
+
+  const getApiErrorText = (data, fallback) => {
+    const errorLines = data?.errors && typeof data.errors === 'object'
+      ? Object.values(data.errors).flat().filter(Boolean)
+      : [];
+
+    return errorLines.length > 0 ? errorLines.join(' ') : (data?.message || fallback);
+  };
+
+  const handleServiceImageChange = (file) => {
+    if (!validateServiceImage(file)) {
+      setImageFile(null);
+      setUploadInputKey(prev => prev + 1);
+      return;
+    }
+    setServiceFormMessage({ type: '', text: '' });
+    setImageFile(file || null);
+  };
+
+  const handleEditServiceImageChange = (file) => {
+    if (!validateServiceImage(file)) {
+      setEditServiceImageFile(null);
+      setEditServiceImageKey(prev => prev + 1);
+      return;
+    }
+    setServiceFormMessage({ type: '', text: '' });
+    setEditServiceImageFile(file || null);
+  };
+
   useEffect(() => {
-    if (page === 'services') {
+    if (!imageFile) {
+      setServiceImagePreview('');
+      return undefined;
+    }
+
+    const previewUrl = URL.createObjectURL(imageFile);
+    setServiceImagePreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [imageFile]);
+
+  useEffect(() => {
+    if (!editServiceImageFile) {
+      setEditServiceImagePreview('');
+      return undefined;
+    }
+
+    const previewUrl = URL.createObjectURL(editServiceImageFile);
+    setEditServiceImagePreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [editServiceImageFile]);
+
+  useEffect(() => {
+    if (page === 'dashboard') {
+      fetchServices();
+      fetchAppointments();
+      fetchUsers();
+    } else if (page === 'services') {
       fetchServices();
     } else if (page === 'appointments') {
       fetchServices();
@@ -1072,6 +1543,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const addUser = async (e) => {
     e.preventDefault();
     setUserMessage({ type: '', text: '' });
+    setAdminActionLoading('Đang thêm người dùng...');
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/users`, {
         method: 'POST',
@@ -1081,18 +1553,25 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setUserMessage({ type: 'success', text: 'Thêm người dùng thành công' });
+        notifyAdmin('success', 'Thêm người dùng thành công');
         setUserForm({ name: '', username: '', email: '', phone: '', password: '', role: 'customer' });
         fetchUsers();
       } else {
-        setUserMessage({ type: 'error', text: data.message || 'Lỗi khi thêm người dùng' });
+        const text = data.message || 'Lỗi khi thêm người dùng';
+        setUserMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setUserMessage({ type: 'error', text: 'Lỗi kết nối' });
+      notifyAdmin('error', 'Lỗi kết nối khi thêm người dùng');
+    } finally {
+      setAdminActionLoading('');
     }
   };
 
   const updateUser = async (id) => {
     setUserMessage({ type: '', text: '' });
+    setAdminActionLoading('Đang cập nhật người dùng...');
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/users/${id}`, {
         method: 'PUT',
@@ -1102,34 +1581,49 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setUserMessage({ type: 'success', text: 'Cập nhật thành công' });
+        notifyAdmin('success', 'Cập nhật người dùng thành công');
         setEditingUserId(null);
         fetchUsers();
       } else {
-        setUserMessage({ type: 'error', text: data.message || 'Lỗi khi cập nhật' });
+        const text = data.message || 'Lỗi khi cập nhật';
+        setUserMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setUserMessage({ type: 'error', text: 'Lỗi kết nối' });
+      notifyAdmin('error', 'Lỗi kết nối khi cập nhật người dùng');
+    } finally {
+      setAdminActionLoading('');
     }
   };
 
   const deleteUser = async (id) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa người dùng này?')) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/users/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setUserMessage({ type: 'success', text: 'Đã xóa người dùng thành công.' });
-        fetchUsers();
-      } else {
-        setUserMessage({ type: 'error', text: data.message || 'Lỗi khi xóa người dùng.' });
+    requestConfirm('Xóa người dùng', 'Bạn có chắc chắn muốn xóa người dùng này? Thao tác này không thể hoàn tác.', async () => {
+      setConfirmDialog({ open: false, title: '', message: '', onConfirm: null });
+      setAdminActionLoading('Đang xóa người dùng...');
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/users/${id}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setUserMessage({ type: 'success', text: 'Đã xóa người dùng thành công.' });
+          notifyAdmin('success', 'Đã xóa người dùng thành công');
+          fetchUsers();
+        } else {
+          const text = data.message || 'Lỗi khi xóa người dùng.';
+          setUserMessage({ type: 'error', text });
+          notifyAdmin('error', text);
+        }
+      } catch (error) {
+        console.error(error);
+        setUserMessage({ type: 'error', text: 'Lỗi kết nối khi xóa người dùng.' });
+        notifyAdmin('error', 'Lỗi kết nối khi xóa người dùng');
+      } finally {
+        setAdminActionLoading('');
       }
-    } catch (error) {
-      console.error(error);
-      setUserMessage({ type: 'error', text: 'Lỗi kết nối khi xóa người dùng.' });
-    }
+    });
   };
 
   const startEditUser = (user) => {
@@ -1139,6 +1633,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       username: user.username || '',
       email: user.email || '',
       phone: user.phone || '',
+      password: '',
       role: (user.roles && user.roles.length > 0) ? user.roles[0].name : 'customer'
     });
   };
@@ -1147,37 +1642,67 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     try {
       const res = await fetch(`${API_BASE_URL}/api/services`);
       const data = await res.json();
-      if (res.ok) setServices(data.data || data);
-    } catch (error) { console.error(error); }
+      if (res.ok) {
+        const payload = data.data || data;
+        setServices(Array.isArray(payload) ? payload : []);
+      }
+    } catch (error) {
+      console.error(error);
+      setServices([]);
+    }
   };
 
   const fetchStaffs = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/staffs`);
       const data = await res.json();
-      if (res.ok) setStaffs(data.data || data);
+      if (res.ok) {
+        const payload = data.data || data;
+        const list = Array.isArray(payload) ? payload : [];
+        setStaffs(list);
+        setNewAppointmentForm((prev) => (
+          prev.staff_id || list.length === 0
+            ? prev
+            : { ...prev, staff_id: String(list[0].id) }
+        ));
+      }
     } catch (error) { console.error(error); }
   };
 
   const fetchAppointments = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/appointments`, {
+      const res = await fetch(`${API_BASE_URL}/api/appointments`, {
         headers: getAuthHeaders()
       });
       const data = await res.json();
-      if (res.ok) setAppointments(data.data || data);
-    } catch (error) { console.error(error); }
+      if (res.ok) {
+        const payload = data.data || data;
+        setAppointments(Array.isArray(payload) ? payload : []);
+        return;
+      }
+
+      const text = data?.message || 'Không thể tải danh sách lịch hẹn';
+      setAppointments([]);
+      setAppointmentMessage({ type: 'error', text });
+      notifyAdmin('error', text);
+    } catch (error) {
+      console.error(error);
+      setAppointments([]);
+      setAppointmentMessage({ type: 'error', text: 'Lỗi kết nối khi tải lịch hẹn' });
+      notifyAdmin('error', 'Lỗi kết nối khi tải lịch hẹn');
+    }
   };
 
   const addService = async (e) => {
     e.preventDefault();
     setServiceFormMessage({ type: '', text: '' });
+    setAdminActionLoading('Đang thêm dịch vụ...');
     try {
       const formDataToSend = new FormData();
       Object.keys(formData).forEach(key => formDataToSend.append(key, formData[key]));
       if (imageFile) formDataToSend.append('image', imageFile);
 
-      const res = await fetch(`${API_BASE_URL}/api/admin/services`, {
+      const res = await fetch(`${API_BASE_URL}/api/services`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: formDataToSend
@@ -1185,27 +1710,34 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setServiceFormMessage({ type: 'success', text: 'Thêm dịch vụ thành công' });
+        notifyAdmin('success', 'Thêm dịch vụ thành công');
         setFormData({ name: '', description: '', price: '', duration: '' });
         setImageFile(null);
         setUploadInputKey(prev => prev + 1);
         fetchServices();
       } else {
-        setServiceFormMessage({ type: 'error', text: data.message || 'Lỗi khi thêm dịch vụ' });
+        const text = data.message || 'Lỗi khi thêm dịch vụ';
+        setServiceFormMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setServiceFormMessage({ type: 'error', text: 'Lỗi kết nối' });
+      notifyAdmin('error', 'Lỗi kết nối khi thêm dịch vụ');
+    } finally {
+      setAdminActionLoading('');
     }
   };
 
   const updateService = async (id) => {
     setServiceFormMessage({ type: '', text: '' });
+    setAdminActionLoading('Đang cập nhật dịch vụ...');
     try {
       const formDataToSend = new FormData();
       formDataToSend.append('_method', 'PUT');
       Object.keys(editServiceForm).forEach(key => formDataToSend.append(key, editServiceForm[key]));
       if (editServiceImageFile) formDataToSend.append('image', editServiceImageFile);
 
-      const res = await fetch(`${API_BASE_URL}/api/admin/services/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/services/${id}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: formDataToSend
@@ -1213,29 +1745,53 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setServiceFormMessage({ type: 'success', text: 'Cập nhật thành công' });
+        notifyAdmin('success', 'Cập nhật dịch vụ thành công');
         setEditingServiceId(null);
+        setEditServiceImageFile(null);
+        setEditServiceImageKey(prev => prev + 1);
         fetchServices();
       } else {
-        setServiceFormMessage({ type: 'error', text: data.message || 'Lỗi khi cập nhật' });
+        const text = data.message || 'Lỗi khi cập nhật';
+        setServiceFormMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setServiceFormMessage({ type: 'error', text: 'Lỗi kết nối' });
+      notifyAdmin('error', 'Lỗi kết nối khi cập nhật dịch vụ');
+    } finally {
+      setAdminActionLoading('');
     }
   };
 
   const deleteService = async (id) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa dịch vụ này?')) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/services/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-      if (res.ok) fetchServices();
-    } catch (error) { console.error(error); }
+    requestConfirm('Xóa dịch vụ', 'Bạn có chắc chắn muốn xóa dịch vụ này? Dịch vụ sẽ không còn hiển thị để đặt lịch.', async () => {
+      setConfirmDialog({ open: false, title: '', message: '', onConfirm: null });
+      setAdminActionLoading('Đang xóa dịch vụ...');
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/services/${id}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        if (res.ok) {
+          notifyAdmin('success', 'Đã xóa dịch vụ');
+          fetchServices();
+        } else {
+          notifyAdmin('error', 'Lỗi khi xóa dịch vụ');
+        }
+      } catch (error) {
+        console.error(error);
+        notifyAdmin('error', 'Lỗi kết nối khi xóa dịch vụ');
+      } finally {
+        setAdminActionLoading('');
+      }
+    });
   };
 
   const startEditService = (service) => {
     setEditingServiceId(service.id);
+    setEditServiceImageFile(null);
+    setEditServiceImagePreview('');
+    setEditServiceImageKey(prev => prev + 1);
     setEditServiceForm({
       name: service.name,
       description: service.description || '',
@@ -1247,28 +1803,51 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   const submitNewAppointment = async (e) => {
     e.preventDefault();
     setAppointmentMessage({ type: '', text: '' });
+
+    if (!newAppointmentForm.appointment_date || !newAppointmentForm.appointment_time) {
+      setAppointmentMessage({ type: 'error', text: 'Vui lòng chọn ngày và giờ hẹn.' });
+      return;
+    }
+
+    if (newAppointmentForm.service_ids.length === 0) {
+      setAppointmentMessage({ type: 'error', text: 'Vui lòng chọn ít nhất 1 dịch vụ.' });
+      return;
+    }
+
+    if (!newAppointmentForm.staff_id) {
+      setAppointmentMessage({ type: 'error', text: 'Vui lòng chọn nhân viên phụ trách.' });
+      return;
+    }
+
     setIsSubmittingAppointment(true);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/appointments`, {
+      const payload = {
+        ...newAppointmentForm,
+        staff_id: newAppointmentForm.staff_id || null,
+        appointment_date: `${newAppointmentForm.appointment_date} ${newAppointmentForm.appointment_time}:00`,
+        services: newAppointmentForm.service_ids
+      };
+
+      const res = await fetch(`${API_BASE_URL}/api/appointments/create-manual`, {
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          ...newAppointmentForm,
-          appointment_date: `${newAppointmentForm.appointment_date} ${newAppointmentForm.appointment_time}:00`,
-          services: newAppointmentForm.service_ids
-        })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (res.ok) {
         setAppointmentMessage({ type: 'success', text: 'Thêm lịch hẹn thành công' });
-        setNewAppointmentForm({ name: '', phone: '', staff_id: '1', appointment_date: '', appointment_time: '09:00', service_ids: [], notes: '' });
+        notifyAdmin('success', 'Thêm lịch hẹn thành công');
+        setNewAppointmentForm({ name: '', phone: '', staff_id: staffs[0]?.id ? String(staffs[0].id) : '', appointment_date: '', appointment_time: '09:00', service_ids: [], notes: '' });
         fetchAppointments();
       } else {
-        setAppointmentMessage({ type: 'error', text: data.message || 'Lỗi khi thêm lịch hẹn' });
+        const text = getApiErrorText(data, 'Lỗi khi thêm lịch hẹn');
+        setAppointmentMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setAppointmentMessage({ type: 'error', text: 'Lỗi kết nối' });
+      notifyAdmin('error', 'Lỗi kết nối khi thêm lịch hẹn');
     } finally {
       setIsSubmittingAppointment(false);
     }
@@ -1278,7 +1857,9 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
     const dateTimeParts = getLocalDateTimeParts(apt.appointment_date);
     setEditingAppointmentId(apt.id);
     setEditAppointmentForm({
-      staff_id: String(apt.staff_id || '1'),
+      name: apt.user?.name || apt.customer_name || apt.name || '',
+      phone: apt.user?.phone || apt.phone || '',
+      staff_id: String(apt.staff_id || ''),
       appointment_date: dateTimeParts.date,
       appointment_time: dateTimeParts.time,
       service_ids: (apt.services || []).map(s => s.id),
@@ -1288,12 +1869,14 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
   };
 
   const submitEditAppointmentByAdmin = async (id) => {
+    setAdminActionLoading('Đang cập nhật lịch hẹn...');
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/appointments/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/appointments/${id}/admin`, {
         method: 'PUT',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           ...editAppointmentForm,
+          staff_id: editAppointmentForm.staff_id || null,
           appointment_date: `${editAppointmentForm.appointment_date} ${editAppointmentForm.appointment_time}:00`,
           services: editAppointmentForm.service_ids
         })
@@ -1301,22 +1884,41 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setEditingAppointmentId(null);
+        notifyAdmin('success', 'Cập nhật lịch hẹn thành công');
         fetchAppointments();
       } else {
-        alert(data.message || 'Lỗi khi cập nhật');
+        notifyAdmin('error', getApiErrorText(data, 'Lỗi khi cập nhật lịch hẹn'));
       }
-    } catch (error) { console.error(error); }
+    } catch (error) {
+      console.error(error);
+      notifyAdmin('error', 'Lỗi kết nối khi cập nhật lịch hẹn');
+    } finally {
+      setAdminActionLoading('');
+    }
   };
 
   const deleteAppointmentByAdmin = async (id) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa lịch hẹn này?')) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/appointments/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-      if (res.ok) fetchAppointments();
-    } catch (error) { console.error(error); }
+    requestConfirm('Xóa lịch hẹn', 'Bạn có chắc chắn muốn xóa lịch hẹn này? Khách hàng sẽ không còn thấy lịch này.', async () => {
+      setConfirmDialog({ open: false, title: '', message: '', onConfirm: null });
+      setAdminActionLoading('Đang xóa lịch hẹn...');
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/appointments/${id}/admin`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        if (res.ok) {
+          notifyAdmin('success', 'Đã xóa lịch hẹn');
+          fetchAppointments();
+        } else {
+          notifyAdmin('error', 'Lỗi khi xóa lịch hẹn');
+        }
+      } catch (error) {
+        console.error(error);
+        notifyAdmin('error', 'Lỗi kết nối khi xóa lịch hẹn');
+      } finally {
+        setAdminActionLoading('');
+      }
+    });
   };
 
   const updateSalonSettings = async (e) => {
@@ -1332,28 +1934,39 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setSettingsMessage({ type: 'success', text: 'Cập nhật thành công' });
+        notifyAdmin('success', 'Cập nhật cài đặt salon thành công');
         fetchSalonSettings();
       } else {
-        setSettingsMessage({ type: 'error', text: data.message || 'Lỗi khi cập nhật' });
+        const text = data.message || 'Lỗi khi cập nhật';
+        setSettingsMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setSettingsMessage({ type: 'error', text: 'Lỗi kết nối' });
+      notifyAdmin('error', 'Lỗi kết nối khi cập nhật cài đặt');
     } finally {
       setSettingsSaving(false);
     }
   };
 
   const uploadHeroImage = async (e) => {
+    await uploadSalonImage(e, 'hero_image');
+  };
+
+  const uploadSalonImage = async (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setHeroSelectedFileName(file.name);
-    setHeroImageUploading(true);
+    if (type === 'hero_image') {
+      setHeroSelectedFileName(file.name);
+      setHeroImageUploading(true);
+    }
+    setImageUploading(prev => ({ ...prev, [type]: true }));
     setHeroImageMessage({ type: '', text: '' });
 
     const formData = new FormData();
     formData.append('image', file);
-    formData.append('type', 'hero_image');
+    formData.append('type', type);
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/salon-settings/upload-image`, {
@@ -1364,15 +1977,51 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
       const data = await res.json();
       if (res.ok) {
         setHeroImageMessage({ type: 'success', text: 'Tải ảnh lên thành công!' });
+        notifyAdmin('success', 'Tải ảnh lên thành công');
         fetchSalonSettings();
       } else {
-        setHeroImageMessage({ type: 'error', text: data.message || 'Lỗi khi tải ảnh.' });
+        const text = data.message || 'Lỗi khi tải ảnh.';
+        setHeroImageMessage({ type: 'error', text });
+        notifyAdmin('error', text);
       }
     } catch (error) {
       setHeroImageMessage({ type: 'error', text: 'Lỗi kết nối khi tải ảnh.' });
+      notifyAdmin('error', 'Lỗi kết nối khi tải ảnh');
     } finally {
-      setHeroImageUploading(false);
+      if (type === 'hero_image') setHeroImageUploading(false);
+      setImageUploading(prev => ({ ...prev, [type]: false }));
     }
+  };
+
+  const deleteSalonImage = async (url, type) => {
+    if (!url) return;
+    requestConfirm('Xóa ảnh', 'Bạn có chắc chắn muốn xóa ảnh này khỏi trang chủ?', async () => {
+      setConfirmDialog({ open: false, title: '', message: '', onConfirm: null });
+      setAdminActionLoading('Đang xóa ảnh...');
+      setHeroImageMessage({ type: '', text: '' });
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/salon-settings/delete-image`, {
+          method: 'DELETE',
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ url, type })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setHeroImageMessage({ type: 'success', text: 'Đã xóa ảnh.' });
+          notifyAdmin('success', 'Đã xóa ảnh');
+          fetchSalonSettings();
+        } else {
+          const text = data.message || 'Lỗi khi xóa ảnh.';
+          setHeroImageMessage({ type: 'error', text });
+          notifyAdmin('error', text);
+        }
+      } catch (error) {
+        setHeroImageMessage({ type: 'error', text: 'Lỗi kết nối khi xóa ảnh.' });
+        notifyAdmin('error', 'Lỗi kết nối khi xóa ảnh');
+      } finally {
+        setAdminActionLoading('');
+      }
+    });
   };
 
   const updateWorkingHourValue = (day, field, value) => {
@@ -1385,6 +2034,17 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
 
   return (
     <div className="flex min-h-screen bg-[#08050c] text-[#f8e7d9]">
+      <LoadingOverlay show={Boolean(adminBusyLabel)} label={adminBusyLabel} />
+      <ConfirmDialog
+        dialog={confirmDialog}
+        onCancel={() => setConfirmDialog({ open: false, title: '', message: '', onConfirm: null })}
+        onConfirm={() => confirmDialog.onConfirm?.()}
+      />
+      {adminNotice.text && (
+        <div className="fixed right-5 top-5 z-40 w-[min(420px,calc(100vw-40px))]">
+          <AlertBanner message={adminNotice} type={adminNotice.type} onClose={() => setAdminNotice({ type: '', text: '' })} />
+        </div>
+      )}
       <aside className="w-64 border-r border-[#7f5c44]/30 bg-[#140d1f] p-6">
         <div className="mb-10">
           <p className="text-xs font-black uppercase tracking-[0.3em] text-[#d5a56a]">Admin Panel</p>
@@ -1411,7 +2071,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
             </button>
           ))}
           <button
-            onClick={() => setAuth(null)}
+            onClick={onLogout}
             className="mt-10 flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-bold text-rose-300 hover:bg-rose-500/10"
           >
             <span>🚪</span> Đăng xuất
@@ -1445,53 +2105,77 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
             <h2 className="mb-6 text-3xl font-black text-[#f7dfc2]">Quản lý dịch vụ</h2>
 
             <form onSubmit={addService} className="mb-8 rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
-              <div className="grid grid-cols-2 gap-4">
-                <input
-                  type="text"
-                  placeholder="Tên dịch vụ"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                />
-                <input
-                  type="text"
-                  placeholder="Giá (k)"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                  className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                />
-                <input
-                  type="text"
-                  placeholder="Thời lượng (phút)"
-                  value={formData.duration}
-                  onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
-                  className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                />
-                <input
-                  key={uploadInputKey}
-                  type="file"
-                  onChange={(e) => setImageFile(e.target.files[0])}
-                  className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-sm text-[#99878e] outline-none"
-                />
+              <div className="grid gap-5 lg:grid-cols-[1fr_220px]">
+                <div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <input
+                      type="text"
+                      placeholder="Tên dịch vụ"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none ring-[#d8a56c] focus:ring"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Giá (k)"
+                      value={formData.price}
+                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                      className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none ring-[#d8a56c] focus:ring"
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="Thời lượng (phút)"
+                      value={formData.duration}
+                      onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                      className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none ring-[#d8a56c] focus:ring"
+                    />
+                  </div>
+                  <textarea
+                    placeholder="Mô tả dịch vụ"
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="mt-4 min-h-24 w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none ring-[#d8a56c] focus:ring"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="service-image-input" className="mb-2 block text-xs font-black uppercase tracking-wide text-[#d8a56c]">
+                    Ảnh dịch vụ
+                  </label>
+                  <div className="mb-3 aspect-[4/3] overflow-hidden rounded-lg border border-[#6f5262] bg-[#0f0a17]">
+                    {serviceImagePreview ? (
+                      <img src={serviceImagePreview} alt="Ảnh dịch vụ" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-sm font-bold text-[#8d7b82]">Chưa chọn ảnh</div>
+                    )}
+                  </div>
+                  <input
+                    id="service-image-input"
+                    key={uploadInputKey}
+                    type="file"
+                    accept="image/jpeg,image/png,image/jpg,image/webp"
+                    onChange={(e) => handleServiceImageChange(e.target.files[0] || null)}
+                    className="w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-xs text-[#cbb9bb] outline-none file:mr-3 file:rounded-md file:border-0 file:bg-[#d8a56c] file:px-3 file:py-2 file:font-bold file:text-[#2a1724]"
+                  />
+                </div>
               </div>
-              <textarea
-                placeholder="Mô tả dịch vụ"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="mt-4 w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-              />
-              <button type="submit" className="mt-4 rounded-md bg-[#f0c6bb] px-5 py-2 font-black uppercase tracking-wide text-[#2a1724] hover:bg-[#ffd9cf]">
-                Thêm dịch vụ
+
+              <button
+                type="submit"
+                disabled={adminActionLoading === 'Đang thêm dịch vụ...'}
+                className="mt-4 rounded-md bg-[#f0c6bb] px-5 py-3 font-black uppercase tracking-wide text-[#2a1724] hover:bg-[#ffd9cf] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {adminActionLoading === 'Đang thêm dịch vụ...' ? 'Đang thêm...' : 'Thêm dịch vụ'}
               </button>
               {serviceFormMessage.text && (
-                <p className={`mt-3 text-sm font-semibold ${serviceFormMessage.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
-                  {serviceFormMessage.text}
-                </p>
+                <AlertBanner message={serviceFormMessage} type={serviceFormMessage.type} onClose={() => setServiceFormMessage({ type: '', text: '' })} />
               )}
             </form>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {services.map((service) => (
+              {(Array.isArray(services) ? services : []).map((service) => (
                 <div key={service.id} className="rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
                   <div className="flex items-center justify-between">
                     <div className="flex gap-4">
@@ -1511,27 +2195,55 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
 
                   {editingServiceId === service.id && (
                     <div className="mt-4 rounded-lg border border-[#6f5262] bg-[#0f0a17] p-4">
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          value={editServiceForm.name}
-                          onChange={(e) => setEditServiceForm({ ...editServiceForm, name: e.target.value })}
-                          className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                        />
-                        <input
-                          type="text"
-                          value={editServiceForm.price}
-                          onChange={(e) => setEditServiceForm({ ...editServiceForm, price: e.target.value })}
-                          className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
-                        />
+                      <div className="grid gap-4 md:grid-cols-[1fr_160px]">
+                        <div>
+                          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                            <input
+                              type="text"
+                              value={editServiceForm.name}
+                              onChange={(e) => setEditServiceForm({ ...editServiceForm, name: e.target.value })}
+                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              value={editServiceForm.price}
+                              onChange={(e) => setEditServiceForm({ ...editServiceForm, price: e.target.value })}
+                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                            />
+                            <input
+                              type="number"
+                              min="1"
+                              value={editServiceForm.duration}
+                              onChange={(e) => setEditServiceForm({ ...editServiceForm, duration: e.target.value })}
+                              className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring md:col-span-2"
+                            />
+                          </div>
+                          <textarea
+                            value={editServiceForm.description}
+                            onChange={(e) => setEditServiceForm({ ...editServiceForm, description: e.target.value })}
+                            className="mt-2 min-h-20 w-full rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                          />
+                        </div>
+                        <div>
+                          <div className="mb-2 aspect-[4/3] overflow-hidden rounded-lg border border-[#6f5262] bg-[#120b1c]">
+                            {(editServiceImagePreview || resolveServiceImage(service)) ? (
+                              <img src={editServiceImagePreview || resolveServiceImage(service)} alt={service.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-xs font-bold text-[#8d7b82]">Chưa có ảnh</div>
+                            )}
+                          </div>
+                          <input
+                            key={editServiceImageKey}
+                            type="file"
+                            accept="image/jpeg,image/png,image/jpg,image/webp"
+                            onChange={(e) => handleEditServiceImageChange(e.target.files[0] || null)}
+                            className="w-full text-xs text-[#99878e] file:mr-2 file:rounded-md file:border-0 file:bg-[#d8a56c] file:px-2 file:py-1 file:font-bold file:text-[#2a1724]"
+                          />
+                        </div>
                       </div>
-                      <input
-                        type="file"
-                        onChange={(e) => setEditServiceImageFile(e.target.files[0])}
-                        className="mt-2 text-xs text-[#99878e]"
-                      />
                       <div className="mt-3 flex gap-2">
-                        <button onClick={() => updateService(service.id)} className="rounded-md bg-[#f0c6bb] px-4 py-2 text-xs font-bold uppercase text-[#2a1724]">Lưu</button>
+                        <button onClick={() => updateService(service.id)} disabled={adminActionLoading === 'Đang cập nhật dịch vụ...'} className="rounded-md bg-[#f0c6bb] px-4 py-2 text-xs font-bold uppercase text-[#2a1724] disabled:opacity-60">Lưu</button>
                         <button onClick={() => setEditingServiceId(null)} className="rounded-md border border-[#8d6a52] px-4 py-2 text-xs font-bold uppercase text-[#f3d5b8]">Hủy</button>
                       </div>
                     </div>
@@ -1657,7 +2369,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                     <p className="text-xs font-semibold uppercase tracking-wide text-[#d8a56c]">Dịch vụ</p>
                     <p className="mt-1 text-xs text-[#cbb9bb]">
                       {newAppointmentForm.service_ids.length > 0
-                        ? services.filter(s => newAppointmentForm.service_ids.includes(s.id)).map(s => s.name).join(', ')
+                        ? (Array.isArray(services) ? services : []).filter(s => newAppointmentForm.service_ids.includes(s.id)).map(s => s.name).join(', ')
                         : 'Chọn dịch vụ'}
                     </p>
                   </button>
@@ -1665,7 +2377,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                   {isNewAptServicePickerOpen && (
                     <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border border-[#8d6a52] bg-[#1a0f27] p-3 shadow-xl">
                       <div className="max-h-48 space-y-2 overflow-auto pr-1">
-                        {services.map((service) => {
+                        {(Array.isArray(services) ? services : []).map((service) => {
                           const checked = newAppointmentForm.service_ids.includes(service.id);
                           return (
                             <label
@@ -1697,6 +2409,17 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                     </div>
                   )}
                 </div>
+                <select
+                  value={newAppointmentForm.staff_id}
+                  onChange={(e) => setNewAppointmentForm({ ...newAppointmentForm, staff_id: e.target.value })}
+                  required
+                  className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                >
+                  <option value="" disabled>Chọn nhân viên</option>
+                  {(Array.isArray(staffs) ? staffs : []).map((staff) => (
+                    <option key={staff.id} value={staff.id}>{staff.name}</option>
+                  ))}
+                </select>
               </div>
 
               {showNewAptTimeGrid && (
@@ -1753,21 +2476,24 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
               </button>
 
               {appointmentMessage.text && (
-                <p className={`mt-3 text-sm font-semibold ${appointmentMessage.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
-                  {appointmentMessage.text}
-                </p>
+                <AlertBanner message={appointmentMessage} type={appointmentMessage.type} onClose={() => setAppointmentMessage({ type: '', text: '' })} />
               )}
             </form>
 
             <div className="space-y-4">
-              {appointments.map((apt) => (
+              {appointments.length === 0 && (
+                <div className="rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5 text-sm text-[#c7b4b6]">
+                  Chưa có lịch hẹn nào để hiển thị.
+                </div>
+              )}
+              {(Array.isArray(appointments) ? appointments : []).map((apt) => (
                 <div key={apt.id} className="rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
                   <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-lg font-bold text-[#f7dfc2]">{apt.user?.name || apt.customer_name || apt.name || 'N/A'}</p>
-                    <p className="text-sm text-[#f3d5b8] mb-1">{apt.user?.phone || apt.phone}</p>
+                    <p className="text-lg font-bold text-[#f7dfc2]">{apt.user?.name || apt.customer_name || apt.name || apt.user?.username || `Khách #${apt.id}`}</p>
+                    <p className="text-sm text-[#f3d5b8] mb-1">{apt.user?.phone || apt.phone || 'Chưa có số điện thoại'}</p>
                     <p className="text-sm text-[#c7b4b6] mb-1">
-                      Dịch vụ: {apt.services?.map(s => s.name).join(', ') || 'N/A'}
+                      Dịch vụ: {(Array.isArray(apt.services) ? apt.services : []).map(s => s.name).join(', ') || 'N/A'}
                     </p>
                     <p className="text-xs text-[#c7b4b6] opacity-70">{new Date(apt.appointment_date).toLocaleString('vi-VN')}</p>
                   </div>
@@ -1796,6 +2522,21 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                       <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#d8a56c]">Cập nhật thông tin lịch hẹn</p>
 
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <input
+                          type="text"
+                          value={editAppointmentForm.name}
+                          onChange={(e) => setEditAppointmentForm((prev) => ({ ...prev, name: e.target.value }))}
+                          placeholder="Tên khách hàng"
+                          className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                        />
+
+                        <input
+                          type="text"
+                          value={editAppointmentForm.phone}
+                          onChange={(e) => setEditAppointmentForm((prev) => ({ ...prev, phone: e.target.value }))}
+                          placeholder="Số điện thoại"
+                          className="rounded-lg border border-[#6f5262] bg-[#120b1c] px-3 py-2 text-white outline-none ring-[#d8a56c] focus:ring"
+                        />
 
                         <select
                           value={editAppointmentForm.status}
@@ -1816,7 +2557,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                             <p className="text-xs font-semibold uppercase tracking-wide text-[#d8a56c]">Dịch vụ</p>
                             <p className="mt-1 text-xs text-[#cbb9bb]">
                               {editAppointmentForm.service_ids.length > 0
-                                ? services.filter(s => editAppointmentForm.service_ids.includes(s.id)).map(s => s.name).join(', ')
+                                ? (Array.isArray(services) ? services : []).filter(s => editAppointmentForm.service_ids.includes(s.id)).map(s => s.name).join(', ')
                                 : 'Chọn dịch vụ'}
                             </p>
                           </button>
@@ -1824,7 +2565,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                           {isEditAptServicePickerOpen && (
                             <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border border-[#8d6a52] bg-[#1a0f27] p-3 shadow-xl">
                               <div className="max-h-48 space-y-2 overflow-auto pr-1">
-                                {services.map((service) => {
+                                {(Array.isArray(services) ? services : []).map((service) => {
                                   const checked = editAppointmentForm.service_ids.includes(service.id);
                                   return (
                                     <label
@@ -2026,8 +2767,15 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                       <img
                         src={resolveHeroImage(settingsForm.hero_image)}
                         alt="Current Hero"
-                        className="max-h-40 max-w-xs rounded-lg object-cover"
+                        className="aspect-[16/9] w-full max-w-xl rounded-lg border border-[#8d6a52]/35 object-cover"
                       />
+                      <button
+                        type="button"
+                        onClick={() => deleteSalonImage(settingsForm.hero_image, 'hero_image')}
+                        className="mt-2 rounded-md border border-rose-400/60 px-3 py-2 text-xs font-bold uppercase text-rose-200 hover:bg-rose-500/20"
+                      >
+                        Xóa ảnh hero
+                      </button>
                     </div>
                   )}
 
@@ -2035,7 +2783,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                     <input
                       ref={heroFileInputRef}
                       type="file"
-                      accept="image/jpeg,image/png,image/jpg,image/gif"
+                      accept="image/jpeg,image/png,image/jpg,image/gif,image/webp"
                       onChange={uploadHeroImage}
                       disabled={heroImageUploading}
                       className="hidden"
@@ -2051,13 +2799,11 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                   </div>
                   
                   <p className="mt-2 text-xs text-[#99878e]">
-                    Chấp nhận: JPEG, PNG, GIF (Tối đa 5MB)
+                    Chấp nhận: JPEG, PNG, GIF, WEBP. Nên dùng ảnh ngang tối thiểu 1920x1080 để banner không bị vỡ hoặc mờ khi kéo rộng.
                   </p>
 
                   {heroImageMessage.text && (
-                    <p className={`mt-3 text-sm font-semibold ${heroImageMessage.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
-                      {heroImageMessage.text}
-                    </p>
+                    <AlertBanner message={heroImageMessage} type={heroImageMessage.type} onClose={() => setHeroImageMessage({ type: '', text: '' })} />
                   )}
 
                   {heroImageUploading && (
@@ -2065,7 +2811,87 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                   )}
                 </div>
 
+                <div className="mb-6 rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
+                  <h3 className="mb-4 text-lg font-black text-[#f7dfc2]">Logo và bộ sưu tập trang chủ</h3>
+
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <div>
+                      <p className="mb-2 text-sm font-semibold text-[#f3d5b8]">Logo salon</p>
+                      {settingsForm.logo && (
+                        <div className="mb-3 flex items-center gap-3">
+                          <img src={resolveImageUrl(settingsForm.logo)} alt="Logo salon" className="h-16 w-16 rounded-lg object-contain bg-[#0f0a17]" />
+                          <button
+                            type="button"
+                            onClick={() => deleteSalonImage(settingsForm.logo, 'logo')}
+                            className="rounded-md border border-rose-400/60 px-3 py-2 text-xs font-bold uppercase text-rose-200 hover:bg-rose-500/20"
+                          >
+                            Xóa logo
+                          </button>
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/jpg,image/gif,image/webp"
+                        onChange={(e) => uploadSalonImage(e, 'logo')}
+                        disabled={Boolean(imageUploading.logo)}
+                        className="w-full rounded-lg border border-dashed border-[#8d6a52]/40 bg-[#0f0a17] px-4 py-2 text-sm text-[#cbb9bb]"
+                      />
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-sm font-semibold text-[#f3d5b8]">Thêm ảnh bộ sưu tập</p>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/jpg,image/gif,image/webp"
+                        onChange={(e) => uploadSalonImage(e, 'gallery')}
+                        disabled={Boolean(imageUploading.gallery)}
+                        className="w-full rounded-lg border border-dashed border-[#8d6a52]/40 bg-[#0f0a17] px-4 py-2 text-sm text-[#cbb9bb]"
+                      />
+                    </div>
+                  </div>
+
+                  {settingsForm.gallery_images?.length > 0 && (
+                    <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+                      {settingsForm.gallery_images.map((image) => (
+                        <div key={image} className="rounded-lg border border-[#8d6a52]/30 bg-[#0f0a17] p-2">
+                          <img src={resolveImageUrl(image)} alt="Ảnh bộ sưu tập" className="h-24 w-full rounded-md object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => deleteSalonImage(image, 'gallery')}
+                            className="mt-2 w-full rounded-md border border-rose-400/60 px-2 py-1 text-xs font-bold uppercase text-rose-200 hover:bg-rose-500/20"
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <form onSubmit={updateSalonSettings} className="rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
+                <div className="mb-6 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#f3d5b8]">Tên salon</label>
+                    <input
+                      type="text"
+                      value={settingsForm.salon_name}
+                      onChange={(e) => setSettingsForm((prev) => ({ ...prev, salon_name: e.target.value }))}
+                      placeholder="Tên hiển thị ngoài trang chủ"
+                      className="w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#f3d5b8]">Email salon</label>
+                    <input
+                      type="email"
+                      value={settingsForm.salon_email}
+                      onChange={(e) => setSettingsForm((prev) => ({ ...prev, salon_email: e.target.value }))}
+                      placeholder="Email liên hệ"
+                      className="w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
+                    />
+                  </div>
+                </div>
+
                 <div className="mb-6">
                   <label className="mb-2 block text-sm font-semibold text-[#f3d5b8]">Số điện thoại liên hệ</label>
                   <input
@@ -2073,6 +2899,16 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                     value={settingsForm.salon_phone}
                     onChange={(e) => setSettingsForm((prev) => ({ ...prev, salon_phone: e.target.value }))}
                     placeholder="Nhập số điện thoại liên hệ"
+                    className="w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
+                  />
+                </div>
+
+                <div className="mb-6">
+                  <label className="mb-2 block text-sm font-semibold text-[#f3d5b8]">Địa chỉ salon</label>
+                  <textarea
+                    value={settingsForm.salon_address}
+                    onChange={(e) => setSettingsForm((prev) => ({ ...prev, salon_address: e.target.value }))}
+                    placeholder="Địa chỉ hiển thị ngoài trang chủ"
                     className="w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
                   />
                 </div>
@@ -2125,9 +2961,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                 </button>
 
                 {settingsMessage.text && (
-                  <p className={`mt-3 text-sm font-semibold ${settingsMessage.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
-                    {settingsMessage.text}
-                  </p>
+                  <AlertBanner message={settingsMessage} type={settingsMessage.type} onClose={() => setSettingsMessage({ type: '', text: '' })} />
                 )}
               </form>
               </>
@@ -2180,10 +3014,11 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                   <button
                     type="button"
                     onClick={() => setShowUserPassword(!showUserPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#99878e] hover:text-[#f0c6bb]"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md text-[#99878e] hover:text-[#f0c6bb]"
                     title={showUserPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    aria-label={showUserPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   >
-                    {showUserPassword ? '👁️' : '👁️‍🗨️'}
+                    <PasswordVisibilityIcon visible={showUserPassword} />
                   </button>
                 </div>
                 <select
@@ -2199,9 +3034,7 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                 Thêm người dùng
               </button>
               {userMessage.text && (
-                <p className={`mt-3 text-sm font-semibold ${userMessage.type === 'success' ? 'text-emerald-300' : 'text-rose-300'}`}>
-                  {userMessage.text}
-                </p>
+                <AlertBanner message={userMessage} type={userMessage.type} onClose={() => setUserMessage({ type: '', text: '' })} />
               )}
             </form>
 
@@ -2273,10 +3106,11 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
                           <button
                             type="button"
                             onClick={() => setShowEditUserPassword(!showEditUserPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#99878e] hover:text-[#f0c6bb]"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md text-[#99878e] hover:text-[#f0c6bb]"
                             title={showEditUserPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                            aria-label={showEditUserPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                           >
-                            {showEditUserPassword ? '👁️' : '👁️‍🗨️'}
+                            <PasswordVisibilityIcon visible={showEditUserPassword} />
                           </button>
                         </div>
                         <select
@@ -2316,9 +3150,19 @@ function AdminPanel({ auth, setAuth, page, setPage }) {
 
 function LoginRegister({ setAuth, initialMode, onBack }) {
   const [mode, setMode] = useState(initialMode || 'login');
-  const [formData, setFormData] = useState({ name: '', username: '', email: '', phone: '', password: '', role: 'customer' });
+  const [formData, setFormData] = useState({
+    name: '',
+    username: '',
+    email: '',
+    phone: '',
+    password: '',
+    password_confirmation: '',
+    role: 'customer'
+  });
   const [message, setMessage] = useState({ type: '', text: '' });
   const [loading, setLoading] = useState(false);
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
+  const [showAuthPasswordConfirm, setShowAuthPasswordConfirm] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -2344,11 +3188,13 @@ function LoginRegister({ setAuth, initialMode, onBack }) {
 
       const data = await res.json();
       if (res.ok) {
-        if (data.token) localStorage.setItem('auth_token', data.token);
-        const userData = data.user || data.data;
-        setAuth({ user: userData });
+        const token = data?.data?.token || data?.token;
+        const userData = data?.data?.user || data?.user || data?.data;
+        if (token) localStorage.setItem('auth_token', token);
+        setAuth({ user: userData, token });
       } else {
-        setMessage({ type: 'error', text: data.message || (mode === 'login' ? 'Đăng nhập thất bại.' : 'Đăng ký thất bại.') });
+        const firstError = data?.errors ? Object.values(data.errors).flat()[0] : '';
+        setMessage({ type: 'error', text: firstError || data.message || (mode === 'login' ? 'Đăng nhập thất bại.' : 'Đăng ký thất bại.') });
       }
     } catch (error) {
       setMessage({ type: 'error', text: 'Lỗi kết nối. Vui lòng thử lại.' });
@@ -2358,6 +3204,7 @@ function LoginRegister({ setAuth, initialMode, onBack }) {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#08050c] p-4 text-[#f8e7d9]">
+      <LoadingOverlay show={loading} label={mode === 'login' ? 'Đang đăng nhập...' : 'Đang tạo tài khoản...'} />
       <div className="w-full max-w-md rounded-2xl border border-[#d5a56a]/30 bg-[#140d1f] p-8 shadow-2xl shadow-black/40">
         <button onClick={onBack} className="mb-6 text-sm font-bold text-[#d5a56a] hover:text-white">← Quay lại</button>
         <h2 className="mb-6 text-3xl font-black uppercase tracking-wide text-[#f7d9b2]">
@@ -2385,6 +3232,14 @@ function LoginRegister({ setAuth, initialMode, onBack }) {
           />
           {mode === 'register' && (
             <>
+              <select
+                value={formData.role}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
+              >
+                <option value="customer">Tài khoản khách hàng</option>
+                <option value="admin">Tài khoản quản trị viên</option>
+              </select>
               <input
                 type="email"
                 placeholder="Email"
@@ -2403,14 +3258,46 @@ function LoginRegister({ setAuth, initialMode, onBack }) {
               />
             </>
           )}
-          <input
-            type="password"
-            placeholder="Mật khẩu"
-            required
-            value={formData.password}
-            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
-          />
+          <div className="relative">
+            <input
+              type={showAuthPassword ? 'text' : 'password'}
+              placeholder="Mật khẩu"
+              required
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 pr-12 text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
+            />
+            <button
+              type="button"
+              onClick={() => setShowAuthPassword(!showAuthPassword)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md text-[#99878e] hover:text-[#f0c6bb]"
+              title={showAuthPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              aria-label={showAuthPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+            >
+              <PasswordVisibilityIcon visible={showAuthPassword} />
+            </button>
+          </div>
+          {mode === 'register' && (
+            <div className="relative">
+              <input
+                type={showAuthPasswordConfirm ? 'text' : 'password'}
+                placeholder="Xác nhận mật khẩu"
+                required
+                value={formData.password_confirmation}
+                onChange={(e) => setFormData({ ...formData, password_confirmation: e.target.value })}
+                className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 pr-12 text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
+              />
+              <button
+                type="button"
+                onClick={() => setShowAuthPasswordConfirm(!showAuthPasswordConfirm)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md text-[#99878e] hover:text-[#f0c6bb]"
+                title={showAuthPasswordConfirm ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                aria-label={showAuthPasswordConfirm ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              >
+                <PasswordVisibilityIcon visible={showAuthPasswordConfirm} />
+              </button>
+            </div>
+          )}
 
           <button
             type="submit"
@@ -2421,9 +3308,7 @@ function LoginRegister({ setAuth, initialMode, onBack }) {
           </button>
 
           {message.text && (
-            <p className={`text-center text-xs font-bold ${message.type === 'success' ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {message.text}
-            </p>
+            <AlertBanner message={message} type={message.type} onClose={() => setMessage({ type: '', text: '' })} />
           )}
         </form>
 
@@ -2431,7 +3316,10 @@ function LoginRegister({ setAuth, initialMode, onBack }) {
           <p className="text-[#cbb9bb]">
             {mode === 'login' ? 'Chưa có tài khoản?' : 'Đã có tài khoản?'}
             <button
-              onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+              onClick={() => {
+                setMessage({ type: '', text: '' });
+                setMode(mode === 'login' ? 'register' : 'login');
+              }}
               className="ml-2 font-black text-[#d5a56a] hover:underline"
             >
               {mode === 'login' ? 'Đăng ký ngay' : 'Đăng nhập'}

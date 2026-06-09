@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\SpatieRoleSetup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Spatie\Permission\Models\Role;
 
 class AdminUserController extends Controller
 {
@@ -13,12 +15,14 @@ class AdminUserController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => User::all()
+            'data' => User::with('roles')->orderBy('created_at', 'desc')->get()
         ]);
     }
 
     public function store(Request $request)
     {
+        SpatieRoleSetup::ensure();
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'username' => 'required|string|max:255|unique:users',
@@ -37,15 +41,23 @@ class AdminUserController extends Controller
             'role' => $validated['role']
         ]);
 
+        $user->syncRoles([$validated['role']]);
+        $roleModel = Role::where('name', $validated['role'])->first();
+        if ($roleModel) {
+            $user->syncPermissions($roleModel->permissions);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Tạo người dùng thành công',
-            'data' => $user
+            'data' => $user->load('roles')
         ], 201);
     }
 
     public function update(Request $request, $id)
     {
+        SpatieRoleSetup::ensure();
+
         $user = User::findOrFail($id);
 
         $validated = $request->validate([
@@ -70,11 +82,16 @@ class AdminUserController extends Controller
         }
 
         $user->update($updateData);
+        $user->syncRoles([$validated['role']]);
+        $roleModel = Role::where('name', $validated['role'])->first();
+        if ($roleModel) {
+            $user->syncPermissions($roleModel->permissions);
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Cập nhật người dùng thành công',
-            'data' => $user
+            'data' => $user->load('roles')
         ]);
     }
 
