@@ -67,7 +67,7 @@ function calculateCalendarDays(calendarMonth) {
   const lastDay = new Date(year, month + 1, 0);
   const daysInMonth = lastDay.getDate();
   const startingDayOfWeek = firstDay.getDay();
-  
+
   const days = [];
   for (let i = 0; i < startingDayOfWeek; i++) {
     days.push(null);
@@ -414,7 +414,7 @@ function App() {
 
         const data = await res.json();
         const userData = data?.data || data;
-        
+
         if (userData && userData.id) {
           setAuth({ user: userData });
         } else {
@@ -611,7 +611,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
       setLoadingServices(true);
       try {
         const res = await fetch(`${API_BASE_URL}/api/services`, {
-          headers: { 
+          headers: {
             'Accept': 'application/json',
             'X-XSRF-TOKEN': decodeURIComponent(getCookie('XSRF-TOKEN') || '')
           }
@@ -633,7 +633,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
     const loadStaffs = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/api/staffs`, {
-          headers: { 
+          headers: {
             'Accept': 'application/json',
             'X-XSRF-TOKEN': decodeURIComponent(getCookie('XSRF-TOKEN') || '')
           }
@@ -650,7 +650,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
     const loadSalonSettings = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/api/salon-settings/public`, {
-          headers: { 
+          headers: {
             'Accept': 'application/json',
             'X-XSRF-TOKEN': decodeURIComponent(getCookie('XSRF-TOKEN') || '')
           }
@@ -860,7 +860,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
                 </>
               )}
 
-              <div className="relative z-10 flex h-full min-h-[520px] flex-col justify-center px-6 py-8 md:px-16 md:py-10">
+              <div className="relative z-10 flex h-full min-h-[320px] flex-col justify-center px-6 py-8 md:px-16 md:py-10">
                 <p className="mb-4 text-base font-bold uppercase tracking-[0.4em] text-[#e5b776] drop-shadow-[0_2px_10px_rgba(0,0,0,0.75)]">{salonSettings.salon_name || 'Luxury Nails Spa'}</p>
                 <h1 className="mb-6 text-4xl font-black leading-tight text-[#fff0e4] drop-shadow-[0_4px_18px_rgba(0,0,0,0.70)] md:text-6xl xl:text-7xl">
                   Nâng tầm vẻ đẹp
@@ -901,14 +901,14 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
                       type="text"
                       placeholder="Tên khách"
                       value={bookingForm.name}
-                      onChange={(e) => setBookingForm({...bookingForm, name: e.target.value})}
+                      onChange={(e) => setBookingForm({ ...bookingForm, name: e.target.value })}
                       className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
                     />
                     <input
                       type="tel"
                       placeholder="Số điện thoại"
                       value={bookingForm.phone}
-                      onChange={(e) => setBookingForm({...bookingForm, phone: e.target.value})}
+                      onChange={(e) => setBookingForm({ ...bookingForm, phone: e.target.value })}
                       className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
                     />
                   </div>
@@ -935,14 +935,14 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
                             type="date"
                             value={bookingForm.appointment_date}
                             min={new Date().toISOString().split('T')[0]}
-                            onChange={(e) => setBookingForm({...bookingForm, appointment_date: e.target.value})}
+                            onChange={(e) => setBookingForm({ ...bookingForm, appointment_date: e.target.value })}
                             className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
                           />
                           <input
                             required
                             type="time"
                             value={bookingForm.appointment_time}
-                            onChange={(e) => setBookingForm({...bookingForm, appointment_time: e.target.value})}
+                            onChange={(e) => setBookingForm({ ...bookingForm, appointment_time: e.target.value })}
                             className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
                           />
                         </div>
@@ -953,11 +953,10 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
                               key={slot}
                               type="button"
                               onClick={() => setBookingForm({ ...bookingForm, appointment_time: slot })}
-                              className={`rounded-lg border px-2 py-2 text-xs font-bold transition ${
-                                bookingForm.appointment_time === slot
+                              className={`rounded-lg border px-2 py-2 text-xs font-bold transition ${bookingForm.appointment_time === slot
                                   ? 'border-[#d5a56a] bg-[#d5a56a] text-[#2a1724]'
                                   : 'border-[#6f5262] bg-[#0f0a17] text-[#cbb9bb] hover:border-[#d5a56a]'
-                              }`}
+                                }`}
                             >
                               {slot}
                             </button>
@@ -974,8 +973,8 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
                       className="flex w-full items-center justify-between rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c]"
                     >
                       <span className={bookingForm.service_ids.length > 0 ? "text-white" : "text-gray-400"}>
-                        {bookingForm.service_ids.length > 0 
-                          ? `${bookingForm.service_ids.length} dịch vụ đã chọn` 
+                        {bookingForm.service_ids.length > 0
+                          ? `${bookingForm.service_ids.length} dịch vụ đã chọn`
                           : "Chọn dịch vụ..."}
                       </span>
                       <span className={`transition-transform ${showServices ? 'rotate-180' : ''}`}>▼</span>
@@ -988,16 +987,14 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
                             key={s.id}
                             type="button"
                             onClick={() => toggleService(s.id)}
-                            className={`w-full flex justify-between items-center px-3 py-2 rounded-lg text-xs transition border ${
-                              bookingForm.service_ids.includes(s.id) 
-                              ? 'border-[#d5a56a] bg-[#d5a56a]/10 text-[#f7d9b2]' 
-                              : 'border-[#6f5262] bg-[#0f0a17] text-[#cbb9bb] hover:border-[#8d6a52]'
-                            }`}
+                            className={`w-full flex justify-between items-center px-3 py-2 rounded-lg text-xs transition border ${bookingForm.service_ids.includes(s.id)
+                                ? 'border-[#d5a56a] bg-[#d5a56a]/10 text-[#f7d9b2]'
+                                : 'border-[#6f5262] bg-[#0f0a17] text-[#cbb9bb] hover:border-[#8d6a52]'
+                              }`}
                           >
                             <span className="flex items-center gap-2 text-left">
-                              <span className={`h-4 w-4 rounded border ${
-                                bookingForm.service_ids.includes(s.id) ? 'border-[#d5a56a] bg-[#d5a56a]' : 'border-[#6f5262]'
-                              }`} />
+                              <span className={`h-4 w-4 rounded border ${bookingForm.service_ids.includes(s.id) ? 'border-[#d5a56a] bg-[#d5a56a]' : 'border-[#6f5262]'
+                                }`} />
                               <span>
                                 <span className="block font-bold">{s.name}</span>
                                 <span className="block text-[11px] opacity-80">{s.duration || 0} phút</span>
@@ -1018,7 +1015,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
                   <textarea
                     placeholder="Ghi chú thêm..."
                     value={bookingForm.notes}
-                    onChange={(e) => setBookingForm({...bookingForm, notes: e.target.value})}
+                    onChange={(e) => setBookingForm({ ...bookingForm, notes: e.target.value })}
                     className="w-full rounded-xl border border-[#6f5262] bg-[#0f0a17] px-4 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-[#d8a56c] h-20"
                   />
 
@@ -1092,7 +1089,7 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
           <section id="lich-hen-cua-toi" className="mt-6 rounded-2xl border border-[#7f5c44]/40 bg-[#0b0712] p-5 md:p-7">
             <div className="mb-5 flex items-end justify-between">
               <h2 className="text-2xl font-black uppercase tracking-wide text-[#f7d9b2]">Lịch hẹn của tôi</h2>
-              <button 
+              <button
                 onClick={fetchMyAppointments}
                 className="text-xs font-semibold uppercase tracking-wide text-[#d5a56a] hover:text-white"
               >
@@ -1122,12 +1119,11 @@ function PublicHome({ auth, setAuth, onAdminClick, onLogout, onLoginClick, onReg
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider ${
-                        apt.status === 'confirmed' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
-                        apt.status === 'pending' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
-                        apt.status === 'cancelled' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
-                        'bg-slate-500/20 text-slate-300 border border-slate-500/30'
-                      }`}>
+                      <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider ${apt.status === 'confirmed' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                          apt.status === 'pending' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                            apt.status === 'cancelled' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
+                              'bg-slate-500/20 text-slate-300 border border-slate-500/30'
+                        }`}>
                         {apt.status}
                       </span>
                     </div>
@@ -1352,7 +1348,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
       fetchRoles();
     }
   }, [page]);
-  
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (newAptServicePickerRef.current && !newAptServicePickerRef.current.contains(event.target)) {
@@ -2047,9 +2043,8 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
             <button
               key={item.id}
               onClick={() => setPage(item.id)}
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-bold transition ${
-                page === item.id ? 'bg-[#d5a56a] text-[#2a1724]' : 'text-[#cbb9bb] hover:bg-[#2a1d2f]'
-              }`}
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-bold transition ${page === item.id ? 'bg-[#d5a56a] text-[#2a1724]' : 'text-[#cbb9bb] hover:bg-[#2a1d2f]'
+                }`}
             >
               <span>{item.icon}</span>
               {item.label}
@@ -2272,7 +2267,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                     >
                       📅 {formatDisplayDate(newAppointmentForm.appointment_date) || 'Chọn ngày'}
                     </button>
-                    
+
                     {showNewAptCalendar && (
                       <div className="absolute z-50 mt-1 w-64 rounded-lg border border-[#8d6a52] bg-[#1a0f27] p-3 shadow-xl left-0">
                         <div className="mb-3 flex items-center justify-between">
@@ -2311,20 +2306,19 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                               dateStr = `${year}-${month}-${day}`;
                             }
                             const isSelected = dateStr === newAppointmentForm.appointment_date;
-                            
+
                             return (
                               <button
                                 key={i}
                                 type="button"
                                 disabled={!date}
                                 onClick={() => date && handleNewAptDateSelect(date)}
-                                className={`rounded px-1 py-1 text-[10px] font-semibold ${
-                                  !date
+                                className={`rounded px-1 py-1 text-[10px] font-semibold ${!date
                                     ? 'text-[#6f5262]'
                                     : isSelected
-                                    ? 'bg-[#f7d9b2] text-[#2a1724]'
-                                    : 'bg-[#2a1d2f] text-[#f7d9b2] hover:bg-[#3a2d3f]'
-                                }`}
+                                      ? 'bg-[#f7d9b2] text-[#2a1724]'
+                                      : 'bg-[#2a1d2f] text-[#f7d9b2] hover:bg-[#3a2d3f]'
+                                  }`}
                               >
                                 {date?.getDate()}
                               </button>
@@ -2367,11 +2361,10 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                           return (
                             <label
                               key={service.id}
-                              className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm transition ${
-                                checked
+                              className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm transition ${checked
                                   ? 'border-amber-400 bg-amber-500/20 text-amber-100'
                                   : 'border-[#6f5262] bg-[#0f0a17] text-[#f8e7d9] hover:border-[#8d6a52]'
-                              }`}
+                                }`}
                             >
                               <span>{service.name}</span>
                               <input
@@ -2428,13 +2421,12 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                               setNewAppointmentForm(prev => ({ ...prev, appointment_time: slot }));
                               setShowNewAptTimeGrid(false);
                             }}
-                            className={`rounded px-2 py-2 text-center text-xs font-bold transition ${
-                              isBooked
+                            className={`rounded px-2 py-2 text-center text-xs font-bold transition ${isBooked
                                 ? 'cursor-not-allowed bg-rose-500/20 text-rose-300 opacity-50'
                                 : isSelected
-                                ? 'bg-[#f0c6bb] text-[#2a1724]'
-                                : 'bg-[#2a1d2f] text-[#f7d9b2] hover:bg-[#3a2d3f]'
-                            }`}
+                                  ? 'bg-[#f0c6bb] text-[#2a1724]'
+                                  : 'bg-[#2a1d2f] text-[#f7d9b2] hover:bg-[#3a2d3f]'
+                              }`}
                           >
                             {slot}
                           </button>
@@ -2474,32 +2466,32 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
               {(Array.isArray(appointments) ? appointments : []).map((apt) => (
                 <div key={apt.id} className="rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
                   <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-lg font-bold text-[#f7dfc2]">{apt.user?.name || apt.customer_name || apt.name || apt.user?.username || `Khách #${apt.id}`}</p>
-                    <p className="text-sm text-[#f3d5b8] mb-1">{apt.user?.phone || apt.phone || 'Chưa có số điện thoại'}</p>
-                    <p className="text-sm text-[#c7b4b6] mb-1">
-                      Dịch vụ: {(Array.isArray(apt.services) ? apt.services : []).map(s => s.name).join(', ') || 'N/A'}
-                    </p>
-                    <p className="text-xs text-[#c7b4b6] opacity-70">{new Date(apt.appointment_date).toLocaleString('vi-VN')}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-lg border border-[#8d6a52] bg-[#26192d] px-4 py-2 text-xs font-bold uppercase tracking-wide text-[#f3d5b8]">
-                      {apt.status}
-                    </span>
+                    <div>
+                      <p className="text-lg font-bold text-[#f7dfc2]">{apt.user?.name || apt.customer_name || apt.name || apt.user?.username || `Khách #${apt.id}`}</p>
+                      <p className="text-sm text-[#f3d5b8] mb-1">{apt.user?.phone || apt.phone || 'Chưa có số điện thoại'}</p>
+                      <p className="text-sm text-[#c7b4b6] mb-1">
+                        Dịch vụ: {(Array.isArray(apt.services) ? apt.services : []).map(s => s.name).join(', ') || 'N/A'}
+                      </p>
+                      <p className="text-xs text-[#c7b4b6] opacity-70">{new Date(apt.appointment_date).toLocaleString('vi-VN')}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-lg border border-[#8d6a52] bg-[#26192d] px-4 py-2 text-xs font-bold uppercase tracking-wide text-[#f3d5b8]">
+                        {apt.status}
+                      </span>
 
-                    <button
-                      onClick={() => startEditAppointment(apt)}
-                      className="rounded-lg border border-[#8d6a52] px-4 py-2 text-xs font-bold uppercase tracking-wide text-[#f3d5b8] hover:bg-[#2a1d2f]"
-                    >
-                      Sửa
-                    </button>
-                    <button
-                      onClick={() => deleteAppointmentByAdmin(apt.id)}
-                      className="rounded-lg border border-rose-400/60 px-4 py-2 text-xs font-bold uppercase tracking-wide text-rose-200 hover:bg-rose-500/20"
-                    >
-                      Xóa
-                    </button>
-                  </div>
+                      <button
+                        onClick={() => startEditAppointment(apt)}
+                        className="rounded-lg border border-[#8d6a52] px-4 py-2 text-xs font-bold uppercase tracking-wide text-[#f3d5b8] hover:bg-[#2a1d2f]"
+                      >
+                        Sửa
+                      </button>
+                      <button
+                        onClick={() => deleteAppointmentByAdmin(apt.id)}
+                        className="rounded-lg border border-rose-400/60 px-4 py-2 text-xs font-bold uppercase tracking-wide text-rose-200 hover:bg-rose-500/20"
+                      >
+                        Xóa
+                      </button>
+                    </div>
                   </div>
 
                   {editingAppointmentId === apt.id && (
@@ -2555,11 +2547,10 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                                   return (
                                     <label
                                       key={service.id}
-                                      className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm transition ${
-                                        checked
+                                      className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm transition ${checked
                                           ? 'border-amber-400 bg-amber-500/20 text-amber-100'
                                           : 'border-[#6f5262] bg-[#120b1c] text-[#f8e7d9] hover:border-[#8d6a52]'
-                                      }`}
+                                        }`}
                                     >
                                       <span>{service.name}</span>
                                       <input
@@ -2592,7 +2583,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                             >
                               📅 {formatDisplayDate(editAppointmentForm.appointment_date) || 'Chọn ngày'}
                             </button>
-                            
+
                             {showEditAptCalendar && (
                               <div className="absolute z-50 mt-1 w-64 rounded-lg border border-[#8d6a52] bg-[#1a0f27] p-3 shadow-xl left-0">
                                 <div className="mb-3 flex items-center justify-between">
@@ -2631,20 +2622,19 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                                       dateStr = `${year}-${month}-${day}`;
                                     }
                                     const isSelected = dateStr === editAppointmentForm.appointment_date;
-                                    
+
                                     return (
                                       <button
                                         key={i}
                                         type="button"
                                         disabled={!date}
                                         onClick={() => date && handleEditAptDateSelect(date)}
-                                        className={`rounded px-1 py-1 text-[10px] font-semibold ${
-                                          !date
+                                        className={`rounded px-1 py-1 text-[10px] font-semibold ${!date
                                             ? 'text-[#6f5262]'
                                             : isSelected
-                                            ? 'bg-[#f7d9b2] text-[#2a1724]'
-                                            : 'bg-[#2a1d2f] text-[#f7d9b2] hover:bg-[#3a2d3f]'
-                                        }`}
+                                              ? 'bg-[#f7d9b2] text-[#2a1724]'
+                                              : 'bg-[#2a1d2f] text-[#f7d9b2] hover:bg-[#3a2d3f]'
+                                          }`}
                                       >
                                         {date?.getDate()}
                                       </button>
@@ -2687,13 +2677,12 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                                       setEditAppointmentForm(prev => ({ ...prev, appointment_time: slot }));
                                       setShowEditAptTimeGrid(false);
                                     }}
-                                    className={`rounded px-2 py-2 text-center text-xs font-bold transition ${
-                                      isBooked
+                                    className={`rounded px-2 py-2 text-center text-xs font-bold transition ${isBooked
                                         ? 'cursor-not-allowed bg-rose-500/20 text-rose-300 opacity-50'
                                         : isSelected
-                                        ? 'bg-[#f0c6bb] text-[#2a1724]'
-                                        : 'bg-[#2a1d2f] text-[#f7d9b2] hover:bg-[#3a2d3f]'
-                                    }`}
+                                          ? 'bg-[#f0c6bb] text-[#2a1724]'
+                                          : 'bg-[#2a1d2f] text-[#f7d9b2] hover:bg-[#3a2d3f]'
+                                      }`}
                                   >
                                     {slot}
                                   </button>
@@ -2745,7 +2734,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
               <>
                 <div className="mb-6 rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
                   <h3 className="mb-4 text-lg font-black text-[#f7dfc2]">Tải lên ảnh Hero</h3>
-                  
+
                   {settingsForm.hero_image && (
                     <div className="mb-4">
                       <p className="mb-2 text-sm text-[#d7c4c6]">Ảnh hiện tại:</p>
@@ -2782,7 +2771,7 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                     </label>
                     <span className="text-[#cbb9bb]">{heroSelectedFileName}</span>
                   </div>
-                  
+
                   <p className="mt-2 text-xs text-[#99878e]">
                     Chấp nhận: JPEG, PNG, GIF, WEBP. Nên dùng ảnh ngang tối thiểu 1920x1080 để banner không bị vỡ hoặc mờ khi kéo rộng.
                   </p>
@@ -2854,101 +2843,101 @@ function AdminPanel({ auth, setAuth, onLogout, page, setPage }) {
                 </div>
 
                 <form onSubmit={updateSalonSettings} className="rounded-xl border border-[#8d6a52]/35 bg-[#170f22] p-5">
-                <div className="mb-6 grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-[#f3d5b8]">Tên salon</label>
+                  <div className="mb-6 grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-[#f3d5b8]">Tên salon</label>
+                      <input
+                        type="text"
+                        value={settingsForm.salon_name}
+                        onChange={(e) => setSettingsForm((prev) => ({ ...prev, salon_name: e.target.value }))}
+                        placeholder="Tên hiển thị ngoài trang chủ"
+                        className="w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-[#f3d5b8]">Email salon</label>
+                      <input
+                        type="email"
+                        value={settingsForm.salon_email}
+                        onChange={(e) => setSettingsForm((prev) => ({ ...prev, salon_email: e.target.value }))}
+                        placeholder="Email liên hệ"
+                        className="w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mb-6">
+                    <label className="mb-2 block text-sm font-semibold text-[#f3d5b8]">Số điện thoại liên hệ</label>
                     <input
                       type="text"
-                      value={settingsForm.salon_name}
-                      onChange={(e) => setSettingsForm((prev) => ({ ...prev, salon_name: e.target.value }))}
-                      placeholder="Tên hiển thị ngoài trang chủ"
+                      value={settingsForm.salon_phone}
+                      onChange={(e) => setSettingsForm((prev) => ({ ...prev, salon_phone: e.target.value }))}
+                      placeholder="Nhập số điện thoại liên hệ"
                       className="w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
                     />
                   </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-[#f3d5b8]">Email salon</label>
-                    <input
-                      type="email"
-                      value={settingsForm.salon_email}
-                      onChange={(e) => setSettingsForm((prev) => ({ ...prev, salon_email: e.target.value }))}
-                      placeholder="Email liên hệ"
+
+                  <div className="mb-6">
+                    <label className="mb-2 block text-sm font-semibold text-[#f3d5b8]">Địa chỉ salon</label>
+                    <textarea
+                      value={settingsForm.salon_address}
+                      onChange={(e) => setSettingsForm((prev) => ({ ...prev, salon_address: e.target.value }))}
+                      placeholder="Địa chỉ hiển thị ngoài trang chủ"
                       className="w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
                     />
                   </div>
-                </div>
 
-                <div className="mb-6">
-                  <label className="mb-2 block text-sm font-semibold text-[#f3d5b8]">Số điện thoại liên hệ</label>
-                  <input
-                    type="text"
-                    value={settingsForm.salon_phone}
-                    onChange={(e) => setSettingsForm((prev) => ({ ...prev, salon_phone: e.target.value }))}
-                    placeholder="Nhập số điện thoại liên hệ"
-                    className="w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
-                  />
-                </div>
+                  <h3 className="mb-3 text-lg font-black text-[#f7dfc2]">Giờ làm việc theo ngày</h3>
+                  <div className="space-y-3">
+                    {Object.keys(DAY_LABELS).map((dayKey) => {
+                      const value = settingsForm.working_hours?.[dayKey] || {};
+                      return (
+                        <div key={dayKey} className="rounded-lg border border-[#8d6a52]/30 bg-[#120b1c] p-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="font-semibold text-[#f3d5b8]">{DAY_LABELS[dayKey]}</p>
+                            <label className="flex items-center gap-2 text-xs text-[#d7c4c6]">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(value.closed)}
+                                onChange={(e) => updateWorkingHourValue(dayKey, 'closed', e.target.checked)}
+                              />
+                              Nghỉ
+                            </label>
+                          </div>
 
-                <div className="mb-6">
-                  <label className="mb-2 block text-sm font-semibold text-[#f3d5b8]">Địa chỉ salon</label>
-                  <textarea
-                    value={settingsForm.salon_address}
-                    onChange={(e) => setSettingsForm((prev) => ({ ...prev, salon_address: e.target.value }))}
-                    placeholder="Địa chỉ hiển thị ngoài trang chủ"
-                    className="w-full rounded-lg border border-[#6f5262] bg-[#0f0a17] px-4 py-2 text-white outline-none ring-[#d8a56c] placeholder:text-[#99878e] focus:ring"
-                  />
-                </div>
-
-                <h3 className="mb-3 text-lg font-black text-[#f7dfc2]">Giờ làm việc theo ngày</h3>
-                <div className="space-y-3">
-                  {Object.keys(DAY_LABELS).map((dayKey) => {
-                    const value = settingsForm.working_hours?.[dayKey] || {};
-                    return (
-                      <div key={dayKey} className="rounded-lg border border-[#8d6a52]/30 bg-[#120b1c] p-3">
-                        <div className="mb-2 flex items-center justify-between">
-                          <p className="font-semibold text-[#f3d5b8]">{DAY_LABELS[dayKey]}</p>
-                          <label className="flex items-center gap-2 text-xs text-[#d7c4c6]">
+                          <div className="grid grid-cols-2 gap-3">
                             <input
-                              type="checkbox"
-                              checked={Boolean(value.closed)}
-                              onChange={(e) => updateWorkingHourValue(dayKey, 'closed', e.target.checked)}
+                              type="time"
+                              value={value.open || '09:00'}
+                              disabled={Boolean(value.closed)}
+                              onChange={(e) => updateWorkingHourValue(dayKey, 'open', e.target.value)}
+                              className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-white outline-none ring-[#d8a56c] disabled:opacity-50"
                             />
-                            Nghỉ
-                          </label>
+                            <input
+                              type="time"
+                              value={value.close || '18:00'}
+                              disabled={Boolean(value.closed)}
+                              onChange={(e) => updateWorkingHourValue(dayKey, 'close', e.target.value)}
+                              className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-white outline-none ring-[#d8a56c] disabled:opacity-50"
+                            />
+                          </div>
                         </div>
+                      );
+                    })}
+                  </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                          <input
-                            type="time"
-                            value={value.open || '09:00'}
-                            disabled={Boolean(value.closed)}
-                            onChange={(e) => updateWorkingHourValue(dayKey, 'open', e.target.value)}
-                            className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-white outline-none ring-[#d8a56c] disabled:opacity-50"
-                          />
-                          <input
-                            type="time"
-                            value={value.close || '18:00'}
-                            disabled={Boolean(value.closed)}
-                            onChange={(e) => updateWorkingHourValue(dayKey, 'close', e.target.value)}
-                            className="rounded-lg border border-[#6f5262] bg-[#0f0a17] px-3 py-2 text-white outline-none ring-[#d8a56c] disabled:opacity-50"
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                  <button
+                    type="submit"
+                    disabled={settingsSaving}
+                    className="mt-5 rounded-md bg-[#f0c6bb] px-5 py-2 font-black uppercase tracking-wide text-[#2a1724] hover:bg-[#ffd9cf] disabled:opacity-60"
+                  >
+                    {settingsSaving ? 'Đang lưu...' : 'Lưu cài đặt'}
+                  </button>
 
-                <button
-                  type="submit"
-                  disabled={settingsSaving}
-                  className="mt-5 rounded-md bg-[#f0c6bb] px-5 py-2 font-black uppercase tracking-wide text-[#2a1724] hover:bg-[#ffd9cf] disabled:opacity-60"
-                >
-                  {settingsSaving ? 'Đang lưu...' : 'Lưu cài đặt'}
-                </button>
-
-                {settingsMessage.text && (
-                  <AlertBanner message={settingsMessage} type={settingsMessage.type} onClose={() => setSettingsMessage({ type: '', text: '' })} />
-                )}
-              </form>
+                  {settingsMessage.text && (
+                    <AlertBanner message={settingsMessage} type={settingsMessage.type} onClose={() => setSettingsMessage({ type: '', text: '' })} />
+                  )}
+                </form>
               </>
             )}
           </div>
@@ -3155,7 +3144,7 @@ function LoginRegister({ setAuth, initialMode, onBack }) {
     setMessage({ type: '', text: '' });
 
     const endpoint = mode === 'login' ? '/api/login' : '/api/register';
-    
+
     try {
       // Get CSRF cookie first for stateful sanctum
       await fetch(`${API_BASE_URL}/sanctum/csrf-cookie`, { credentials: 'include' });
@@ -3310,7 +3299,7 @@ function LoginRegister({ setAuth, initialMode, onBack }) {
               {mode === 'login' ? 'Đăng ký ngay' : 'Đăng nhập'}
             </button>
           </p>
-          
+
           <div className="mt-6 flex items-center justify-center gap-4 border-t border-[#6f5262]/30 pt-6">
             <a
               href={`${API_BASE_URL}/auth/google`}
